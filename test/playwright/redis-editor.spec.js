@@ -239,9 +239,7 @@ test.describe("Node-RED Redis editor", () => {
     expect(saveResponse.ok()).toBeTruthy();
 
     const savedFile = path.join(nodeRed.userDir, "lib", "functions", "stored-block-test.lua");
-    await expect
-      .poll(() => fs.existsSync(savedFile), { timeout: 5000 })
-      .toBe(true);
+    await expect.poll(() => fs.existsSync(savedFile), { timeout: 5000 }).toBe(true);
     const saved = fs.readFileSync(savedFile, "utf8");
     expect(saved).toContain("// name: stored block test");
     expect(saved).toContain("// keyval: 2");
@@ -410,7 +408,7 @@ test.describe("Node-RED Redis editor", () => {
     await expect(page.locator(".red-ui-typedInput-container")).toBeVisible();
 
     await page.evaluate(() => {
-      $("#node-input-params").typedInput("value", "[\"hello\"]");
+      $("#node-input-params").typedInput("value", '["hello"]');
       $("#node-input-params").trigger("change");
     });
     await page.locator("#node-dialog-ok").click();
@@ -424,5 +422,33 @@ test.describe("Node-RED Redis editor", () => {
       };
     });
     expect(saved).toEqual({ params: '["hello"]', paramsType: "json" });
+  });
+
+  test("redis-command editor accepts and persists an arbitrary command not in the suggestion list", async ({
+    page,
+  }) => {
+    nodeRed = await startNodeRed(noauthOptions());
+    await openEditor(page, nodeRed.url);
+    await page.evaluate(() => {
+      RED.editor.edit(RED.nodes.node("redis-ping"));
+    });
+    await page.waitForSelector("#node-input-command", { state: "visible" });
+
+    // The command field is a free-text input backed by a <datalist> of suggestions,
+    // not a closed <select> — an arbitrary module command must still be accepted.
+    await setInputValue(page, "#node-input-command", "MYMODULE.CALL");
+    await page.locator("#node-dialog-ok").click();
+    await page.locator("#node-dialog-ok").waitFor({ state: "hidden" });
+
+    const savedCommand = await page.evaluate(() => RED.nodes.node("redis-ping").command);
+    expect(savedCommand).toBe("MYMODULE.CALL");
+
+    // Reopen and confirm it round-trips through the editor unchanged.
+    await page.evaluate(() => {
+      RED.editor.edit(RED.nodes.node("redis-ping"));
+    });
+    await page.waitForSelector("#node-input-command", { state: "visible" });
+    await expect(page.locator("#node-input-command")).toHaveValue("MYMODULE.CALL");
+    await page.locator("#node-dialog-cancel").click();
   });
 });

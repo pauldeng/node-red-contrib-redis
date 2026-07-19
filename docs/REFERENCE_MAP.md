@@ -29,7 +29,7 @@ Top-level implementation:
 - `../redis.js`
 - `../redis.html`
 
-Tests (21 Mocha spec files). Run the Docker-managed matrix with `npm test`; do not
+Tests (Mocha spec files). Run the Docker-managed matrix with `npm test`; do not
 rely on this list staying exhaustive — confirm with `ls test/*_spec.js`.
 
 Node behavior and lifecycle:
@@ -56,6 +56,10 @@ Command-family coverage (all drive `redis-command` via `client.call`):
 - `../test/sorted_set_commands_spec.js`
 - `../test/stream_commands_spec.js`
 - `../test/string_commands_spec.js`
+- `../test/redis_8_8_data_types_spec.js` — representative coverage (Array, Vector Sets,
+  `INCREX`, `XNACK`, and the bundled `JSON`/`BF`/`CF`/`CMS`/`TOPK`/`TDIGEST`/`TS` modules) for
+  Redis 8.8 data-type families with no existing family spec; each case self-skips via
+  `COMMAND INFO` when the connected Redis lacks that command
 
 Deployment topology coverage:
 
@@ -203,21 +207,27 @@ The single most breakable thing in this repo. Each node picks a connection id an
 `getConn`/`disconnect` refcount it via `usedConn` — a connection only closes when its
 refcount reaches 0.
 
-| Node               | Connection id (`redis.js`)        | Shared?               | Shutdown path                |
-| ------------------ | --------------------------------- | --------------------- | ---------------------------- |
-| `redis-in`         | `n.id`                            | dedicated per node    | forced disconnect (blocking) |
-| `redis-out`        | `server.name`                     | shared by config name | graceful quit                |
-| `redis-command`    | `block ? n.id : this.server.name` | conditional           | graceful quit                |
-| `redis-lua-script` | `block ? n.id : this.server.name` | conditional           | graceful quit                |
-| `redis-instance`   | `n.id`                            | dedicated per node    | graceful quit                |
+| Node               | Connection id (`redis.js`) | Shared?             | Shutdown path                |
+| ------------------ | -------------------------- | ------------------- | ---------------------------- |
+| `redis-in`         | `n.id`                     | dedicated per node  | forced disconnect (blocking) |
+| `redis-out`        | `n.server`                 | shared by config id | graceful quit                |
+| `redis-command`    | `block ? n.id : n.server`  | conditional         | graceful quit                |
+| `redis-lua-script` | `block ? n.id : n.server`  | conditional         | graceful quit                |
+| `redis-instance`   | `n.id`                     | dedicated per node  | graceful quit                |
 
-All four config-name keys use `this.server.name` — the **resolved** config node
-(`this.server = RED.nodes.getNode(n.server)`), not `n.server` (which is just the config-node
-id string, so `n.server.name` is `undefined`). `redis-lua-script` used `n.server.name` until
-a fix made it consistent with the others; the bug had all non-blocking Lua nodes collapse
-onto a single pool key `undefined` and share one client across different configs
-(regression test: `test/redis_lua_conn_spec.js`). The `block ? n.id : server.name` split for
-`redis-lua-script` is proven server-side: `test/scripting_commands_spec.js` and
+All three shared-connection keys use `n.server` — the config-node **id string** referenced by
+the flow property — never the resolved config node's display `name`. Two historical bugs both
+stemmed from confusing these: (1) `redis-lua-script` once keyed by `n.server.name` directly,
+which is `undefined` (`n.server` is just the id string, not the resolved node), so every
+non-blocking Lua node collapsed onto one pool key `undefined`; (2) all three shared paths then
+keyed by `this.server.name` — the resolved config node's _display name_, which defaults to
+`"Local"` and is user-editable — so two differently-configured config nodes that happened to
+share a name (the common case, since `"Local"` is the default) silently shared one client
+across different servers/databases. The fix keys by `n.server`, the config-node id, which is
+unique and immutable regardless of display name (regression tests:
+`test/redis_lua_conn_spec.js`, `test/redis_out_spec.js`, `test/redis_command_spec.js` — each
+has a "shares the default name 'Local'" case). The `block ? n.id : n.server` split for
+`redis-command`/`redis-lua-script` is proven server-side: `test/scripting_commands_spec.js` and
 `test/redis_sentinel_deployment_spec.js` set an ioredis `connectionName` and count named
 `CLIENT LIST` entries (non-block nodes pool onto one connection; each block node adds its own).
 Always confirm intent with a human before changing any id key — it underpins subscriber mode,

@@ -594,7 +594,22 @@ module.exports = function (RED) {
       });
       client[node.command](node.topic, (err, count) => {});
     } else if (node.command === "xreadgroup") {
-      const [stream, lastid] = node.topic.split(":");
+      // Stream IDs (">", "$", "0", "123-0") can never contain a colon, so splitting at
+      // the FINAL colon is an unambiguous, fully backward-compatible separator: it lets
+      // the stream key itself contain colons (e.g. "app:events:log") while a plain
+      // single-colon topic behaves exactly as before.
+      const lastColonIdx = node.topic.lastIndexOf(":");
+      const stream = lastColonIdx >= 0 ? node.topic.slice(0, lastColonIdx) : "";
+      const lastid = lastColonIdx >= 0 ? node.topic.slice(lastColonIdx + 1) : "";
+      if (!stream || !lastid) {
+        node.error(
+          'redis-in xreadgroup: Topic must be "<stream-key>:<id>" with both parts non-empty (got "' +
+            node.topic +
+            '").'
+        );
+        node.status({ fill: "red", shape: "ring", text: "invalid topic" });
+        return;
+      }
       (async () => {
         let attempt = 0;
         while (running) {
@@ -710,13 +725,14 @@ module.exports = function (RED) {
     this.obj = n.obj;
     var node = this;
 
-    let client = getConn(this.server, node.server.name);
+    let id = n.server;
+    let client = getConn(this.server, id);
     let removeListeners = attachStatusListeners(node, client);
 
     node.on("close", async function (done) {
       removeListeners();
       node.status({});
-      await disconnect(node.server.name);
+      await disconnect(id);
       client = null;
       done();
     });
@@ -778,6 +794,18 @@ module.exports = function (RED) {
   }
   RED.nodes.registerType("redis-out", RedisOut);
 
+  // ioredis registers the HSET/MSET family's field-value object argument transform under
+  // the exact lowercase command name only (ioredis Command.js). The editor now saves and
+  // suggests uppercase command names, so dispatch through this lowercase spelling whenever
+  // the saved command case-insensitively matches — for every other command (including
+  // HGETALL, whose case-sensitive *reply* transformer is deliberately bypassed by this node
+  // today) the saved command is sent unchanged.
+  const ARGUMENT_TRANSFORM_COMMANDS = new Set(["hset", "hmset", "mset", "msetnx"]);
+  function dispatchCommandName(command) {
+    var lower = String(command).toLowerCase();
+    return ARGUMENT_TRANSFORM_COMMANDS.has(lower) ? lower : command;
+  }
+
   function RedisCmd(n) {
     RED.nodes.createNode(this, n);
     this.server = RED.nodes.getNode(n.server);
@@ -787,7 +815,7 @@ module.exports = function (RED) {
     this.params = n.params;
     var node = this;
     this.block = n.block || false;
-    let id = this.block ? n.id : this.server.name;
+    let id = this.block ? n.id : n.server;
 
     let client = getConn(this.server, id);
     let removeListeners = attachStatusListeners(node, client);
@@ -800,7 +828,7 @@ module.exports = function (RED) {
       done();
     });
 
-    node.on("input", function (msg, send, done) {
+    node.on("input", async function (msg, send, done) {
       let topic = undefined;
       send =
         send ||
@@ -816,33 +844,25 @@ module.exports = function (RED) {
       if (msg.topic !== undefined && msg.topic !== "") {
         topic = msg.topic;
       } else if (node.topic && node.topic !== "") {
-        try {
-          topic = node.topic;
-        } catch (e) {
-          topic = undefined;
-        }
+        topic = node.topic;
       }
-      let payload = undefined;
 
-      if (msg.payload) {
-        let type = typeof msg.payload;
-        switch (type) {
-          case "string":
-            if (msg.payload.length > 0) {
-              payload = msg.payload;
-            }
-            break;
-          case "object":
-            if (Array.isArray(msg.payload)) {
-              if (msg.payload.length > 0) {
-                payload = msg.payload;
-              }
-              break;
-            }
-            if (Object.keys(msg.payload).length > 0) {
-              payload = msg.payload;
-            }
-            break;
+      // Explicit iff not undefined/null, so falsy-but-meaningful values (0, false, "")
+      // are sent as real arguments instead of being dropped. undefined/null/absent fall
+      // back to the node's configured static Params, matching historical behavior.
+      let payloadArgs;
+      if (msg.payload !== undefined && msg.payload !== null) {
+        if (Array.isArray(msg.payload)) {
+          // ioredis flattens array arguments, so an empty array contributes zero
+          // arguments on the wire — an explicit "no extra arguments" payload.
+          payloadArgs = [msg.payload];
+        } else if (typeof msg.payload === "object") {
+          // Preserve non-empty objects as one argument so ioredis's per-command
+          // transforms (e.g. HSET/MSET field-value mapping) still apply. An empty
+          // object is an explicit zero-argument payload — never stringify it.
+          payloadArgs = Object.keys(msg.payload).length > 0 ? [msg.payload] : [];
+        } else {
+          payloadArgs = [msg.payload];
         }
       } else if (
         node.params &&
@@ -850,33 +870,34 @@ module.exports = function (RED) {
         node.params !== "[]" &&
         node.params !== "{}"
       ) {
+        let parsedParams;
         try {
-          payload = JSON.parse(node.params);
+          parsedParams = JSON.parse(node.params);
         } catch (e) {
-          payload = undefined;
+          done(new Error("redis-command: configured Params is not valid JSON: " + e.message));
+          return;
         }
-      }
-
-      let response = function (err, res) {
-        if (err) {
-          done(err);
-        } else {
-          msg.payload = res;
-          send(msg);
-          done();
-        }
-      };
-
-      if (!payload) {
-        payload = topic;
-        topic = undefined;
-      }
-      if (topic) {
-        client.call(node.command, topic, payload, response);
-      } else if (payload) {
-        client.call(node.command, payload, response);
+        // A saved `null` Params retains its historical meaning of "no static argument";
+        // passed through as-is, ioredis would stringify it into a literal empty-string
+        // argument instead.
+        payloadArgs = parsedParams === null ? [] : [parsedParams];
       } else {
-        client.call(node.command, response);
+        payloadArgs = [];
+      }
+
+      const callArgs = [];
+      if (topic !== undefined) {
+        callArgs.push(topic);
+      }
+      callArgs.push(...payloadArgs);
+
+      try {
+        const res = await client.call(dispatchCommandName(node.command), ...callArgs);
+        msg.payload = res;
+        send(msg);
+        done();
+      } catch (err) {
+        done(err);
       }
     });
   }
@@ -909,7 +930,7 @@ module.exports = function (RED) {
     this.command = "eval";
     var node = this;
     this.block = n.block || false;
-    let id = this.block ? n.id : this.server.name;
+    let id = this.block ? n.id : n.server;
 
     let client = getConn(this.server, id);
 
@@ -1104,19 +1125,32 @@ module.exports = function (RED) {
   }
   RED.nodes.registerType("redis-instance", RedisInstance);
 
+  // Always throws or returns a usable, connected client — never `undefined` — so no
+  // caller ever attaches listeners or handlers to a missing client.
   function getConn(config, id) {
     if (connections[id]) {
       usedConn[id]++;
       return connections[id];
     }
 
+    if (!config) {
+      throw new Error(
+        'Missing redis-config: no configuration node found for id "' +
+          id +
+          "\". Check that this node's Server field points to an existing Redis configuration node."
+      );
+    }
+
     let options = config.options;
 
     if (!options) {
-      return config.error(
-        "Missing options in the redis config - Are you upgrading from old version?",
-        null
-      );
+      let message =
+        'redis-config "' +
+        (config.name || config.id) +
+        '" has no usable connection options - missing or invalid Options ' +
+        "(are you upgrading from an old version?).";
+      config.error(message, null);
+      throw new Error(message);
     }
     try {
       connections[id] = buildRedisClient(options, config.cluster);
@@ -1131,6 +1165,7 @@ module.exports = function (RED) {
       return connections[id];
     } catch (e) {
       config.error(e.message, null);
+      throw e;
     }
   }
 

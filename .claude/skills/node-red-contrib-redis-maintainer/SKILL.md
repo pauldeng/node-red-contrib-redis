@@ -38,7 +38,7 @@ Core files:
 - `redis.js`
 - `redis.html`
 
-Mocha tests (22 spec files — `ls test/*_spec.js` for the live list):
+Mocha tests (`ls test/*_spec.js` for the live list — do not rely on a hard-coded count):
 
 - node behavior/lifecycle: `test/redis_in_spec.js`, `test/redis_out_spec.js`,
   `test/redis_command_spec.js`, `test/redis_status_spec.js`,
@@ -50,7 +50,10 @@ Mocha tests (22 spec files — `ls test/*_spec.js` for the live list):
   `test/list_commands_spec.js`, `test/scripting_commands_spec.js`,
   `test/server_commands_spec.js`, `test/set_commands_spec.js`,
   `test/sorted_set_commands_spec.js`, `test/stream_commands_spec.js`,
-  `test/string_commands_spec.js`
+  `test/string_commands_spec.js`, `test/redis_8_8_data_types_spec.js` (representative
+  coverage for Array, Vector Sets, `INCREX`/`XNACK`, and the bundled JSON/Bloom/Cuckoo/
+  CMS/TopK/t-digest/Time Series modules; each case self-skips via `COMMAND INFO` when
+  unsupported)
 - deployment topology: `test/redis_cluster_deployment_spec.js`,
   `test/redis_sentinel_deployment_spec.js`, `test/memorydb_deployment_spec.js`
 - browser editor coverage: `test/playwright/redis-editor.spec.js` with helpers in

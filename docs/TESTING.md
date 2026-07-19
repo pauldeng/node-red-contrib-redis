@@ -109,8 +109,7 @@ TLS enabled for the cluster connection.
 
 ## Test layout
 
-There are 21 Mocha spec files. Do not assume this list is exhaustive forever; confirm with
-`ls test/*_spec.js`.
+Do not assume this list is exhaustive forever; confirm with `ls test/*_spec.js`.
 
 Node behavior and lifecycle:
 
@@ -131,6 +130,13 @@ Command-family coverage, all driving `redis-command` through `client.call`:
   block mode — including a server-side dedicated-connection proof that sets an ioredis
   `connectionName` on the config and counts named connections via `CLIENT LIST`
   (non-block nodes must pool onto one connection; each block node must add its own)
+- `redis_8_8_data_types_spec.js` — one representative test per Redis 8.8 data-type family
+  with no existing spec home: the Array type, Vector Sets, `INCREX`, `XNACK`, and the bundled
+  modules (`JSON.*`, `BF.*`, `CF.*`, `CMS.*`, `TOPK.*`, `TDIGEST.*`, `TS.*`). Not an
+  exhaustive per-command suite — the generic dispatch path plus one case per family is the
+  contract. Each case self-skips via a `COMMAND INFO` capability check when the connected
+  Redis doesn't support that command, so the file is also safe to run manually against an
+  older or module-less Redis
 
 Deployment topology coverage:
 
@@ -182,3 +188,38 @@ surface against the discovered primary.
 When behavior changes, add or adjust the narrowest test in the matching spec that fails
 before the change and passes after. Prefer extending an existing spec. If you add, rename,
 or remove a spec file, update `REFERENCE_MAP.md`, this file, and the maintainer skill file.
+
+## Dependency audit
+
+Run separately and interpret separately — a clean production audit does not imply a clean
+full audit:
+
+```bash
+npm audit --omit=dev   # the release acceptance gate: must be 0 vulnerabilities
+npm audit               # informational: reports the dev-tooling tree too
+```
+
+As of 2026-07-19, with `node-red@5.0.1`, `playwright@1.61.1`, `prettier@3.9.5`,
+`lint-staged@17.1.0`, `ioredis@5.11.1`, and `mocha@11.7.6` installed:
+
+- `npm audit --omit=dev` reports **0 vulnerabilities**. `ioredis` is the only production
+  dependency this package ships.
+- Full `npm audit` reports **9 development-tree vulnerabilities** (1 low, 1 moderate, 7
+  high), all reachable only through `devDependencies` used to build/run/format the
+  repository itself, never through the published package:
+  - `jsonata` (high, [GHSA-86vw-mfpg-wwv9](https://github.com/advisories/GHSA-86vw-mfpg-wwv9)) —
+    pulled in by `node-red`'s own runtime/editor packages
+    (`@node-red/util`, `@node-red/runtime`, `@node-red/registry`, `@node-red/editor-api`).
+  - `diff` (low, [GHSA-73rr-hh4g-fpgx](https://github.com/advisories/GHSA-73rr-hh4g-fpgx)) and
+    `serialize-javascript` (high, [GHSA-5c6j-r48x-rmvq](https://github.com/advisories/GHSA-5c6j-r48x-rmvq),
+    [GHSA-qj8w-gfj5-8c6v](https://github.com/advisories/GHSA-qj8w-gfj5-8c6v)) — pulled in by
+    `mocha`'s reporter dependencies.
+  - `mocha` itself is flagged moderate only because of the `diff`/`serialize-javascript`
+    entries above.
+
+`node-red@5.0.1` and `mocha@11.7.6` are each already the latest release on npm, so no
+non-breaking upgrade currently resolves these — `npm audit`'s suggested fixes
+(`node-red@0.19.6`, `mocha@11.3.0`) are both **downgrades** to much older releases and must
+not be applied; re-check for a newer non-major release before every dependency refresh.
+Do not allowlist these findings by severity or by dependency name in tooling config — this
+note is the record of why they are currently unresolved, not a suppression.

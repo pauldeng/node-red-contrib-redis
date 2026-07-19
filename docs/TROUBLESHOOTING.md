@@ -69,13 +69,15 @@ The `redis-in` topic format for streams is:
 <stream-key>:<start-id>
 ```
 
+The stream key and start ID are separated by the _last_ colon, so the stream key itself may
+contain colons.
+
 Example:
 
 ```text
 taskstream:>
+app:events:log:>
 ```
-
-The stream key itself must not contain a colon.
 
 ## Pub/Sub Timing
 

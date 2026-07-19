@@ -5,21 +5,25 @@ This package is a classic Node-RED node module with one runtime file and one edi
 ## Files and responsibilities
 
 `../redis.js`
+
 - exports the Node-RED module
 - registers all runtime node types
 - owns connection pooling and shutdown logic
 
 `../redis.html`
+
 - registers all editor node definitions
 - defines forms, defaults, labels, help text, and command lists
 
 `../package.json`
+
 - registers the package with Node-RED
 - defines scripts and dependencies
 
 ## Registered node types
 
 Runtime and editor pairs:
+
 - `redis-config`
 - `redis-in`
 - `redis-out`
@@ -30,6 +34,7 @@ Runtime and editor pairs:
 ## Connection model
 
 Module-level state in `redis.js`:
+
 - `connections` — id → live ioredis client
 - `usedConn` — id → reference count
 
@@ -46,28 +51,35 @@ A per-node-type cheat-sheet of which id each node uses lives in `REFERENCE_MAP.m
 ### Shared vs dedicated connections
 
 `redis-in`
+
 - uses `getConn(this.server, n.id)`
 - each node instance gets its own connection id
 - this matches subscriber and blocking-input needs
 
 `redis-out`
-- uses `getConn(this.server, node.server.name)`
-- write nodes share by config-node name
+
+- uses `getConn(this.server, n.server)`
+- write nodes share by config-node id
 
 `redis-command`
+
 - uses `n.id` when `block` is true
-- otherwise shares by config-node name
+- otherwise shares by config-node id (`n.server`)
 
 `redis-lua-script`
+
 - uses a block-sensitive connection id path
+- non-blocking mode shares by config-node id (`n.server`)
 - treat this area as high-risk and verify intent before changing it
 
 `redis-instance`
+
 - uses a per-node id and stores the client into Node-RED context
 
 ## Status model
 
 `attachStatusListeners` connects node status to Redis client events:
+
 - `ready`
 - `error`
 - `close`
@@ -84,6 +96,7 @@ There are two shutdown paths:
 
 Used for non-blocking connections.
 `gracefulQuit`:
+
 - skips `quit()` if the client is not ready
 - otherwise attempts `client.quit()`
 - falls back to `client.disconnect()` after a timeout or error
@@ -107,6 +120,7 @@ In JSON mode, passwords are kept in a `text`-type `secrets` credential (encrypte
 ### `redis-in`
 
 Implements:
+
 - blocking list pops
 - sorted-set blocking pops
 - `subscribe`
@@ -122,6 +136,7 @@ handled by ioredis re-subscription.
 ### `redis-out`
 
 Implements focused write operations with custom payload shaping for selected commands such as:
+
 - list pushes
 - stream add
 - sorted-set add
@@ -136,6 +151,7 @@ Use this for wide command coverage and advanced Redis or module commands.
 ### `redis-lua-script`
 
 Executes Lua via:
+
 - `EVAL` for unstored scripts
 - `SCRIPT LOAD` + `EVALSHA` for stored scripts
 - `NOSCRIPT` fallback back to `EVAL`
@@ -153,6 +169,7 @@ so a `node` value would throw (the store is wrapped in try/catch and would be si
 
 Do not treat `redis.html` as documentation-only.
 It contains behavior:
+
 - field defaults
 - validation
 - command lists
@@ -165,6 +182,7 @@ Any user-facing runtime change may require a matching editor and help change.
 ## Architecture invariants
 
 Keep these true:
+
 - runtime and editor property names match
 - shutdown always removes listeners and clears status
 - tests describe the intended public behavior
@@ -175,12 +193,14 @@ Keep these true:
 ## Extension hotspots
 
 Safer extension points:
+
 - add targeted command handling in existing node branches
 - add tests before changing payload normalization
 - expand help text and examples
 - improve validation without renaming fields
 
 High-risk extension points:
+
 - changing connection-id keys
 - changing close semantics
 - changing stream payload shapes

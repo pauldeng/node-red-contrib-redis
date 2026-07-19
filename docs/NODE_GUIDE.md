@@ -72,6 +72,9 @@ Message patterns:
 - pattern subscriptions also emit `pattern`
 - blocking pops emit Redis key as `topic`
 - `xreadgroup` emits `stream`, `messageId`, and `payload`
+- `xreadgroup` Topic is `<stream-key>:<id>`, split at the _final_ colon (stream IDs can
+  never contain one), so the stream key itself may contain colons; a Topic with no colon,
+  an empty stream key, or an empty id is a configuration error (`node.error`, red status)
 
 Payload handling:
 
@@ -139,6 +142,54 @@ Behavior:
 - `msg.payload` overrides static params when provided
 - static params come from JSON typedInput
 - `block` forces a dedicated connection id
+- non-blocking (shared) connections are pooled by the config node's **id** (`n.server`),
+  never its display name — two config nodes with the same name (the default is `"Local"`)
+  point at independent clients
+
+`msg.payload` explicit-argument rules — `msg.payload` is treated as explicit only when
+`!== undefined && !== null`:
+
+| `msg.payload`                        | Historical behavior                                                                                               | Current behavior                                                                              |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `0`, `false`, `""`                   | dropped (`if (msg.payload)` truthiness bug); fell back to static Params or a bare/topic-only call                 | sent as the literal argument                                                                  |
+| a truthy number (e.g. `5`) or `true` | silently ignored (the dispatch `switch` had no `number`/`boolean` case); also fell back to a bare/topic-only call | sent as the literal argument                                                                  |
+| non-empty array                      | spread as arguments                                                                                               | unchanged                                                                                     |
+| non-empty plain object               | passed as one argument so ioredis's per-command transforms apply (e.g. `HSET`/`MSET` field-value mapping)         | unchanged                                                                                     |
+| empty array `[]`                     | truthy but failed the `length > 0` check, so it silently suppressed Params and contributed zero extra arguments   | unchanged — still an explicit zero-argument payload                                           |
+| empty object `{}`                    | same as `[]`: suppressed Params, zero extra arguments                                                             | unchanged — still an explicit zero-argument payload; never stringified to `"[object Object]"` |
+| `undefined`, `null`, or absent       | falls back to configured static Params                                                                            | unchanged                                                                                     |
+
+Malformed static Params (invalid JSON) now report `done(err)`/`node.error` instead of
+silently degrading to a bare/topic-only call.
+
+Static Params contract (used only when `msg.payload` is absent, `undefined`, or `null`):
+Params is JSON, evaluated with `JSON.parse`, and the parsed value decides the argument
+shape — a saved array expands into multiple arguments (the normal multi-argument form); a
+saved string, number, or boolean is a single argument, including falsy `0`, `false`, and
+`""`; a saved `null` contributes no static argument at all (ioredis would otherwise
+stringify a raw `null` into a literal empty-string argument on the wire — `null` keeps its
+historical meaning of "nothing configured" instead).
+
+The object-field/value transform for **HSET**/**MSET**/**HMSET**/**MSETNX** applies
+regardless of the saved command's case — ioredis only registers that transform under the
+exact lowercase spelling, so this node normalizes dispatch for those four command names
+only; every other command (including **HGETALL**, whose case-sensitive reply transformer
+this node deliberately bypasses, returning a flat array instead of an object) is sent with
+whatever case was saved.
+
+The **Command** field is a free-text input backed by a `<datalist>` of suggestions derived
+from the Redis 8.8 command catalog (retired RedisAI/RedisGraph/RedisGears entries removed;
+administrative, replication, connection-lifecycle, and destructive commands such as
+`FLUSHALL`, `SHUTDOWN`, `QUIT`, and `FT.DROPINDEX` are deliberately not suggested — see the
+`DATALIST_EXCLUSIONS` list in `../test/redis_8_8_data_types_spec.js` for the exact,
+reasoned set, mostly identified by the server's own `@admin`/`@dangerous` ACL categories).
+It still accepts any command name, suggested or not — including new Redis 8.8 commands
+(`INCREX`, `XNACK`, the Array family `AR*`, Vector Sets `V*`) and bundled-module commands
+(`JSON.*`, `BF.*`, `CF.*`, `CMS.*`, `TOPK.*`, `TDIGEST.*`, `TS.*`) — via the same generic
+`client.call(command, ...)` dispatch. `redis_8_8_data_types_spec.js` also runs a
+full-coverage check against a live Redis 8.8's `COMMAND LIST` (every supported command is
+either suggested or in the exclusion list, and nothing suggested is unsupported); a cheap
+no-Redis spot check of representative entries lives in `redis_lua_ui_spec.js`.
 
 Use this node for:
 
@@ -150,6 +201,8 @@ Use this node for:
 
 Read before editing:
 
+- `../test/redis_command_spec.js`
+- `../test/redis_8_8_data_types_spec.js`
 - `../test/stream_commands_spec.js`
 - `../test/redis_status_spec.js`
 
@@ -161,14 +214,14 @@ Purpose:
 
 Behavior (command resolved from `mode` + `stored` + `readonly`):
 
-| mode | stored | readonly | on ready | on input | recovery |
-|------|--------|----------|----------|----------|----------|
-| script | no | no | — | `EVAL` | — |
-| script | no | yes | — | `EVAL_RO` | — |
-| script | yes | no | `SCRIPT LOAD` | `EVALSHA` | `NOSCRIPT` → `EVAL` |
-| script | yes | yes | `SCRIPT LOAD` | `EVALSHA_RO` | `NOSCRIPT` → `EVAL_RO` |
-| function | n/a | no | `FUNCTION LOAD REPLACE` | `FCALL` | "function not found" → reload → retry once |
-| function | n/a | yes | `FUNCTION LOAD REPLACE` | `FCALL_RO` | "function not found" → reload → retry once |
+| mode     | stored | readonly | on ready                | on input     | recovery                                   |
+| -------- | ------ | -------- | ----------------------- | ------------ | ------------------------------------------ |
+| script   | no     | no       | —                       | `EVAL`       | —                                          |
+| script   | no     | yes      | —                       | `EVAL_RO`    | —                                          |
+| script   | yes    | no       | `SCRIPT LOAD`           | `EVALSHA`    | `NOSCRIPT` → `EVAL`                        |
+| script   | yes    | yes      | `SCRIPT LOAD`           | `EVALSHA_RO` | `NOSCRIPT` → `EVAL_RO`                     |
+| function | n/a    | no       | `FUNCTION LOAD REPLACE` | `FCALL`      | "function not found" → reload → retry once |
+| function | n/a    | yes      | `FUNCTION LOAD REPLACE` | `FCALL_RO`   | "function not found" → reload → retry once |
 
 - Function mode treats the editor as a Redis Functions library source (`#!lua name=…`);
   the node `FUNCTION LOAD REPLACE`s it on every connection `ready`, on all masters in

@@ -3,6 +3,13 @@
   "version": "2.0.0",
   "description": "Node Red client for Redis with pub/sub, list, lua scripting  and other commands support.",
   "main": "redis.js",
+  "files": [
+    "redis.js",
+    "redis.html",
+    "icons",
+    "examples",
+    "docs/assets/readme"
+  ],
   "scripts": {
     "prepare": "husky",
     "test": "node scripts/run-deployment-tests.js",
@@ -40,12 +47,12 @@
   ],
   "devDependencies": {
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.7",
+    "lint-staged": "^17.1.0",
     "mocha": "^11.7.6",
-    "node-red": "^5.0.0",
+    "node-red": "^5.0.1",
     "node-red-node-test-helper": "^0.3.6",
-    "playwright": "^1.60.0",
-    "prettier": "^3.8.3"
+    "playwright": "^1.61.1",
+    "prettier": "^3.9.5"
   },
   "dependencies": {
     "ioredis": "^5.11.1"

@@ -1,7 +1,7 @@
 # node-red-contrib-redis
 
 [![npm version](https://img.shields.io/npm/v/node-red-contrib-redis.svg)](https://www.npmjs.com/package/node-red-contrib-redis)
-[![Node-RED](https://img.shields.io/badge/Node--RED-4.x-red)](https://nodered.org/)
+[![Node-RED](https://img.shields.io/badge/Node--RED-5.x-red)](https://nodered.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Redis nodes for Node-RED built on ioredis: standalone connections, Redis Cluster,
@@ -12,8 +12,8 @@ Use this package when a flow needs Redis as an event source, queue, cache, strea
 coordination point, or custom command target without dropping into a Function node for
 every call.
 
-| Cloud-style config                                                                                                                                                                           | Stream consumer groups                                                                                                                                         | Lua scripts &amp; functions                                                                                                                                            |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cloud-style config                                                                                                                                                                           | Stream consumer groups                                                                                                                                         | Lua scripts &amp; functions                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ![Redis config editor in Cluster mode with AWS MemoryDB or ElastiCache provider, auth fields, TLS option, and successful Test connection result.](docs/assets/readme/redis-config-cloud.png) | ![Redis in editor configured for XREADGROUP with stream topic, consumer group, consumer name, and JSON parsing.](docs/assets/readme/redis-stream-consumer.png) | ![Redis Lua editor in Function mode: Mode set to Function (FCALL), a registered Function name, Keys 1, the Read-only and Block Commands options, and a Redis Functions library in the editor.](docs/assets/readme/redis-lua-fcall.png) |
 
 ## Install
@@ -63,14 +63,14 @@ Useful examples:
 
 ## Nodes
 
-| Node               | Use it for                       | Highlights                                                                                                                                                 |
-| ------------------ | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `redis-config`     | Shared connection configuration  | Single Redis, Cluster, Sentinel, AWS MemoryDB/ElastiCache-style endpoints, env JSON, encrypted credential storage, and Test connection.                    |
-| `redis-in`         | Redis as an input source         | `BLPOP`, `BRPOP`, `BZPOPMIN`, `BZPOPMAX`, `SUBSCRIBE`, `PSUBSCRIBE`, and `XREADGROUP`; blocking consumers retry with capped backoff until the node closes. |
-| `redis-out`        | Focused writes                   | List pushes, publish, `XADD`, and `ZADD`; writes are awaited and failures go through Node-RED error handling.                                              |
-| `redis-command`    | General Redis commands           | Runs configured commands through ioredis, supports JSON params, message overrides, and a dedicated connection option for blocking work. Home for `FUNCTION`/`SCRIPT` management subcommands. |
-| `redis-lua-script` | Atomic server-side logic         | Script mode (`EVAL`/`EVAL_RO`, stored `SCRIPT LOAD`+`EVALSHA`/`EVALSHA_RO`, `NOSCRIPT` recovery) and Function mode (`FUNCTION LOAD REPLACE` + `FCALL`/`FCALL_RO`); Lua editor, library metadata, dedicated-connection option. |
-| `redis-instance`   | Advanced Function-node workflows | Stores a live ioredis client in flow or global context under a configured key.                                                                             |
+| Node               | Use it for                       | Highlights                                                                                                                                                                                                                                                        |
+| ------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `redis-config`     | Shared connection configuration  | Single Redis, Cluster, Sentinel, AWS MemoryDB/ElastiCache-style endpoints, env JSON, encrypted credential storage, and Test connection.                                                                                                                           |
+| `redis-in`         | Redis as an input source         | `BLPOP`, `BRPOP`, `BZPOPMIN`, `BZPOPMAX`, `SUBSCRIBE`, `PSUBSCRIBE`, and `XREADGROUP` (Topic is `<stream-key>:<id>`, split at the _last_ colon, so the stream key may itself contain colons); blocking consumers retry with capped backoff until the node closes. |
+| `redis-out`        | Focused writes                   | List pushes, publish, `XADD`, and `ZADD`; writes are awaited and failures go through Node-RED error handling.                                                                                                                                                     |
+| `redis-command`    | General Redis commands           | Runs configured commands through ioredis, supports JSON params, message overrides, and a dedicated connection option for blocking work. Home for `FUNCTION`/`SCRIPT` management subcommands.                                                                      |
+| `redis-lua-script` | Atomic server-side logic         | Script mode (`EVAL`/`EVAL_RO`, stored `SCRIPT LOAD`+`EVALSHA`/`EVALSHA_RO`, `NOSCRIPT` recovery) and Function mode (`FUNCTION LOAD REPLACE` + `FCALL`/`FCALL_RO`); Lua editor, library metadata, dedicated-connection option.                                     |
+| `redis-instance`   | Advanced Function-node workflows | Stores a live ioredis client in flow or global context under a configured key.                                                                                                                                                                                    |
 
 ## Configuration Notes
 
@@ -167,14 +167,14 @@ arguments. Use Catch nodes around write-heavy flows; Redis command failures are 
 through Node-RED's normal error path instead of being swallowed.
 
 For advanced commands or Redis modules, prefer `redis-command` before writing a Function
-node. `redis-lua-script` *executes* Lua scripts and Redis Functions, while `FUNCTION *` and
-`SCRIPT *` *management* subcommands run through `redis-command`. For custom client code that
+node. `redis-lua-script` _executes_ Lua scripts and Redis Functions, while `FUNCTION *` and
+`SCRIPT *` _management_ subcommands run through `redis-command`. For custom client code that
 really needs ioredis directly, use `redis-instance`.
 
 ## Work with AI Agent
 
 1. Support Claude and Codex
-2. Install [supoerpowers plugin](https://github.com/obra/superpowers)
+2. Install [superpowers plugin](https://github.com/obra/superpowers)
 3. Install [codegraph](https://github.com/colbymchenry/codegraph)
 4. Enjoy
 
