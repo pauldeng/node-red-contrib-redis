@@ -188,15 +188,7 @@ Read:
 - `CHANGE_WORKFLOW.md` — minimal-change rules and edit checklist
 - `TESTING.md` — Docker-managed Redis deployment matrix, test layout, and regression strategy
 - `TROUBLESHOOTING.md` — common local Redis, test, stream, Lua, and sandbox failures
-
-Dated review artifacts. Historical, not read-order material — consult them only when tracing why
-a decision was made:
-
-- `REDIS_8_8_HARDENING_REVIEW.md` — review of the Redis 8.8 hardening work, with a resolution
-  record tracking which of its nine approval conditions are met
-- `REVIEW_2026-07-26.md` — full-repository review (stability, performance, currency, bugs, docs)
-- `REVIEW_VALIDATION_2026-07-26.md` — independent validation of the above, with the triaged fix list
-- `superpowers/` — per-feature design specs and implementation plans kept for provenance
+- `superpowers/specs/` — retained design specs for major behavior changes
 
 ## Quick warnings
 

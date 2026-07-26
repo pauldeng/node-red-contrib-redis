@@ -7,7 +7,7 @@ const path = require("path");
 // NOT suggested in the redis-command datalist. Each entry names the concrete reason so a
 // future audit can tell an intentional omission from a stale one at a glance. Categorized
 // by the server's own ACL categories (`COMMAND INFO <name>`) and command semantics, not by
-// guesswork — see docs/REDIS_8_8_HARDENING_REVIEW.md Finding 3 for the research trail.
+// guesswork.
 const DATALIST_EXCLUSIONS = new Set([
   // Administrative / connection-lifecycle / replication internals — dangerous or
   // meaningless through a shared pooled connection (several already excluded pre-dating

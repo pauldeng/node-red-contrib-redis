@@ -94,6 +94,16 @@ module.exports = function (RED) {
   }
 
   function redactValue(value) {
+    if (typeof value === "string") {
+      try {
+        var url = new URL(value);
+        if (/^rediss?:$/i.test(url.protocol) && url.password) {
+          url.password = "[redacted]";
+          return url.toString();
+        }
+      } catch (e) {}
+      return value;
+    }
     if (Array.isArray(value)) {
       return value.map(redactValue);
     }

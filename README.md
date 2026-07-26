@@ -28,6 +28,21 @@ cd ~/.node-red
 npm install @pauldeng/node-red-contrib-redis
 ```
 
+## Compatibility
+
+| Package                  | Supported                                                    |
+| ------------------------ | ------------------------------------------------------------ |
+| Node.js                  | >= 22.9                                                      |
+| Node-RED                 | >= 5.0.0                                                     |
+| Redis client             | ioredis 5.x                                                  |
+| Redis deployments tested | Standalone, ACL auth, Cluster, Sentinel, AWS MemoryDB opt-in |
+
+## Upgrading From 1.4.0
+
+Version 2.0.0 raises the runtime floor to Node-RED 5 and Node.js 22.9, fixes
+previously silent error paths, and changes some edge-case argument handling. Read
+[CHANGELOG.md](CHANGELOG.md) before upgrading production flows.
+
 ## Quickstart
 
 1. Add a **redis-config** node and choose the connection shape:
@@ -155,6 +170,10 @@ export NODE_RED_REDIS_OPTIONS='{"host":"127.0.0.1","port":6379}'
 
 Environment-variable mode is useful for deployments because secrets stay outside
 `flows.json` and outside exported flow snippets.
+
+Prefer JSON object options or encrypted credentials for passwords. Passwords in Redis
+connection URLs are redacted from connection-test diagnostics, but object-form passwords
+are easier to audit and migrate.
 
 ## Message Patterns
 

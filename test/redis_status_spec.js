@@ -331,6 +331,50 @@ describe("node connection status", function () {
       assert.ok(errorCall, "config node should call node.error");
       assert.match(String(errorCall.args[0]), /redis-config test connection failed/);
     });
+
+    it("redacts Redis URL passwords from failed test-connection diagnostics", async function () {
+      const envName = "NODE_RED_REDIS_SECRET_URL";
+      const originalEnv = process.env[envName];
+      const originalConnect = Redis.prototype.connect;
+      const secret = "super-secret-pass";
+      process.env[envName] = `redis://user:${secret}@127.0.0.1:6379`;
+      Redis.prototype.connect = async function () {
+        throw new Error("synthetic connection failure");
+      };
+      try {
+        await helper.load(redisNode, [GOOD_CONFIG]);
+        const config = helper.getNode("cfg-good");
+        let errorCall;
+        config.on("call:error", function (call) {
+          errorCall = call;
+        });
+
+        const res = await helper
+          .request()
+          .post("/redis-config/test")
+          .send({
+            id: "cfg-good",
+            cluster: false,
+            optionsType: "env",
+            options: envName,
+          })
+          .expect(500);
+
+        await new Promise((resolve) => setImmediate(resolve));
+
+        assert.strictEqual(res.body.success, false);
+        assert.ok(errorCall, "config node should call node.error");
+        assert.doesNotMatch(JSON.stringify(res.body), new RegExp(secret));
+        assert.doesNotMatch(String(errorCall.args[0]), new RegExp(secret));
+      } finally {
+        Redis.prototype.connect = originalConnect;
+        if (originalEnv === undefined) {
+          delete process.env[envName];
+        } else {
+          process.env[envName] = originalEnv;
+        }
+      }
+    });
   });
 
   // ── redis-in ────────────────────────────────────────────────────────────
