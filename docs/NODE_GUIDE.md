@@ -233,6 +233,9 @@ Behavior (command resolved from `mode` + `stored` + `readonly`):
 Input expectations:
 
 - if `keyval > 0`, `msg.payload` must be an array
+- if `keyval` is 0: omit `payload` (or pass `null` / `[]`) for zero `ARGV`; an array
+  expands into `ARGV` entries; a scalar or `Buffer` is one `ARGV`; a plain object is
+  rejected (`Payload is not Array`) instead of being coerced to `"[object Object]"`
 - result is always returned in `msg.payload`
 
 Critical editor behaviors:

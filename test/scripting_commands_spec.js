@@ -253,6 +253,135 @@ describe("Scripting commands", function () {
 
   // ── redis-lua-script node: stored scripts (EVALSHA) and NOSCRIPT fallback ──
 
+  it("redis-lua-script (stored) reports SCRIPT LOAD compile errors via node.error", async function () {
+    // Function-mode loadLibrary already surfaces FUNCTION LOAD failures; stored
+    // SCRIPT LOAD must do the same — a red status alone is not actionable.
+    const flow = [
+      configNode,
+      {
+        id: "bad-load-node",
+        type: "redis-lua-script",
+        server: "config1",
+        name: "bad-load",
+        func: "this is not ( valid lua",
+        keyval: 0,
+        stored: true,
+        mode: "script",
+        block: false,
+        wires: [["bad-load-helper"]],
+      },
+      { id: "bad-load-helper", type: "helper" },
+    ];
+
+    await loadFlowAsync(flow);
+    const node = helper.getNode("bad-load-node");
+    // Wait for the loader to finish (red status), then assert the error was logged.
+    const start = Date.now();
+    while (true) {
+      const last = node.status.lastCall && node.status.lastCall.args[0];
+      if (last && last.text === "script not loaded") {
+        break;
+      }
+      if (Date.now() - start > 4000) {
+        throw new Error("expected red 'script not loaded' status after a failed SCRIPT LOAD");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    node.error.callCount.should.be.above(
+      0,
+      "SCRIPT LOAD failure must be reported via node.error, not only status"
+    );
+    String(node.error.firstCall.args[0]).should.match(/ERR|compil/i);
+  });
+
+  it("redis-lua-script with Keys=0 sends no ARGV when payload is absent or null", async function () {
+    const flow = [
+      configNode,
+      {
+        id: "argv0-node",
+        type: "redis-lua-script",
+        server: "config1",
+        name: "argv0",
+        func: "return #ARGV",
+        keyval: 0,
+        stored: false,
+        mode: "script",
+        block: false,
+        wires: [["argv0-helper"]],
+      },
+      { id: "argv0-helper", type: "helper" },
+    ];
+
+    await loadFlowAsync(flow);
+    const node = helper.getNode("argv0-node");
+    const sink = helper.getNode("argv0-helper");
+
+    const absentP = nextMessage(sink);
+    node.receive({ topic: "" });
+    (await absentP).payload.should.equal(0);
+
+    const nullP = nextMessage(sink);
+    node.receive({ topic: "", payload: null });
+    (await nullP).payload.should.equal(0);
+
+    const emptyP = nextMessage(sink);
+    node.receive({ topic: "", payload: [] });
+    (await emptyP).payload.should.equal(0);
+  });
+
+  it("redis-lua-script with Keys=0 rejects a non-array object payload", async function () {
+    const flow = [
+      configNode,
+      {
+        id: "obj-payload-node",
+        type: "redis-lua-script",
+        server: "config1",
+        name: "obj-payload",
+        func: "return #ARGV",
+        keyval: 0,
+        stored: false,
+        mode: "script",
+        block: false,
+        wires: [["obj-payload-helper"]],
+      },
+      { id: "obj-payload-helper", type: "helper" },
+    ];
+
+    await loadFlowAsync(flow);
+    const node = helper.getNode("obj-payload-node");
+    const errP = nextError(node);
+    node.receive({ topic: "", payload: { a: 1 } });
+    String(await errP).should.match(/Payload is not Array/i);
+  });
+
+  it("redis-lua-script with Keys=0 accepts a Buffer as a single ARGV", async function () {
+    const flow = [
+      configNode,
+      {
+        id: "buf-payload-node",
+        type: "redis-lua-script",
+        server: "config1",
+        name: "buf-payload",
+        func: "return {#ARGV, ARGV[1]}",
+        keyval: 0,
+        stored: false,
+        mode: "script",
+        block: false,
+        wires: [["buf-payload-helper"]],
+      },
+      { id: "buf-payload-helper", type: "helper" },
+    ];
+
+    await loadFlowAsync(flow);
+    const node = helper.getNode("buf-payload-node");
+    const sink = helper.getNode("buf-payload-helper");
+    const msgP = nextMessage(sink);
+    node.receive({ topic: "", payload: Buffer.from("bin-arg") });
+    const msg = await msgP;
+    msg.payload[0].should.equal(1);
+    msg.payload[1].should.equal("bin-arg");
+  });
+
   it("redis-lua-script (stored) executes via EVALSHA and returns result", async function () {
     const flow = [
       configNode,

@@ -26,6 +26,10 @@ flows keep working, but several nodes now surface errors that previous versions 
   `0`, `false`, or `""` is now sent as a real argument instead of being dropped. An empty
   array or empty object means "no extra arguments". A saved `Params` of `null` contributes no
   argument. Malformed `Params` JSON is reported as an error instead of being silently ignored.
+- **`redis-lua-script` with Keys=0 no longer invents an empty ARGV.** An absent or `null`
+  `msg.payload` contributes zero `ARGV` entries (previously one empty string). A non-array
+  object payload is rejected with `Payload is not Array` instead of being coerced to the
+  literal `"[object Object]"`. A scalar or `Buffer` payload is still sent as a single `ARGV`.
 - **`redis-in` `xreadgroup` splits its Topic at the last colon.** `<stream-key>:<id>` now
   allows colons inside the stream key (`app:events:log:>`). Single-colon topics behave exactly
   as before.
@@ -44,6 +48,8 @@ flows keep working, but several nodes now surface errors that previous versions 
 - `redis-in`: a refused `SUBSCRIBE`/`PSUBSCRIBE` (for example an ACL user without pubsub
   access) is now reported through the node's error path and shown as a red status. Earlier
   versions left the node green and permanently silent.
+- `redis-lua-script`: a failed stored `SCRIPT LOAD` (for example a Lua compile error) is
+  reported through `node.error`, matching Function-mode `FUNCTION LOAD` failure reporting.
 - `redis-lua-script`: **Function mode** — treats the editor content as a Redis Functions
   library, runs `FUNCTION LOAD REPLACE` on deploy and reconnect, and invokes a registered
   function with `FCALL`. Cluster deployments load on every master, and a library flushed out

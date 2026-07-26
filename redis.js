@@ -972,6 +972,9 @@ module.exports = function (RED) {
         node.status({ fill: "green", shape: "dot", text: "script loaded" });
       } catch (err) {
         node.status({ fill: "red", shape: "dot", text: "script not loaded" });
+        // Surface the SCRIPT LOAD failure (e.g. a Lua compile error) — the
+        // status text alone is not actionable. Matches loadLibrary above.
+        node.error(err);
       }
     };
 
@@ -1019,9 +1022,25 @@ module.exports = function (RED) {
         done(Error("Payload is not Array"));
         return;
       }
+      // Keys=0: absent/null must contribute zero ARGV ([].concat(undefined)
+      // appends one element). A plain object would coerce to the useless string
+      // "[object Object]" — reject it. Scalars and Buffer remain a single ARGV.
+      if (
+        msg.payload !== undefined &&
+        msg.payload !== null &&
+        typeof msg.payload === "object" &&
+        !Array.isArray(msg.payload) &&
+        !Buffer.isBuffer(msg.payload)
+      ) {
+        done(Error("Payload is not Array"));
+        return;
+      }
 
       // [leadingArg, numkeys, ...keysAndArgs]; ioredis flattens the array.
-      const argsWith = (head) => [head, node.keyval].concat(msg.payload);
+      const argsWith = (head) =>
+        msg.payload === undefined || msg.payload === null
+          ? [head, node.keyval]
+          : [head, node.keyval].concat(msg.payload);
 
       try {
         let res;

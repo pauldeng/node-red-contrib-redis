@@ -2666,12 +2666,16 @@
 
   <h3>Inputs</h3>
   <dl class="message-properties">
-      <dt>payload <span class="property-type">array</span></dt>
+      <dt>payload <span class="property-type">array | scalar (optional)</span></dt>
       <dd>Arguments for the script, as a flat array.
           The first <strong>Keys</strong> elements are mapped to <code>KEYS[1]</code>,
           <code>KEYS[2]</code>, &hellip; inside the script.
           All remaining elements become <code>ARGV[1]</code>, <code>ARGV[2]</code>, &hellip;<br>
-          Must be an array when <strong>Keys</strong> is greater than 0.</dd>
+          Must be an array when <strong>Keys</strong> is greater than 0.
+          When <strong>Keys</strong> is 0, omit <code>payload</code> (or pass
+          <code>null</code>/<code>[]</code>) for zero <code>ARGV</code>, pass an array of
+          argument values, or pass a single scalar or <code>Buffer</code> as one
+          <code>ARGV</code>. A plain object is rejected.</dd>
   </dl>
 
   <h3>Outputs</h3>
