@@ -386,51 +386,10 @@ module.exports = function (RED) {
     }
   }
 
-  // Secret extract/merge for redis-config. MUST stay in sync with the copy in
+  // Secret merge for redis-config. MUST stay in sync with mergeSecrets in
   // redis.html (editor): same paths — single/sentinel `password`, sentinel
-  // `sentinelPassword`, cluster per-node `nodes[i]`.
-  function extractSecrets(options) {
-    var secrets = {};
-    if (Array.isArray(options)) {
-      var pws = options.map(function (node) {
-        return node && node.password ? node.password : "";
-      });
-      if (
-        pws.some(function (p) {
-          return p;
-        })
-      ) {
-        secrets.nodes = pws;
-      }
-      var strippedNodes = options.map(function (node) {
-        var copy = Object.assign({}, node);
-        delete copy.password;
-        return copy;
-      });
-      return { stripped: strippedNodes, secrets: secrets };
-    }
-    if (options && typeof options === "object") {
-      var stripped = Object.assign({}, options);
-      if (Array.isArray(options.sentinels)) {
-        if (options.password) {
-          secrets.password = options.password;
-        }
-        if (options.sentinelPassword) {
-          secrets.sentinelPassword = options.sentinelPassword;
-        }
-        delete stripped.password;
-        delete stripped.sentinelPassword;
-      } else {
-        if (options.password) {
-          secrets.password = options.password;
-        }
-        delete stripped.password;
-      }
-      return { stripped: stripped, secrets: secrets };
-    }
-    return { stripped: options, secrets: secrets };
-  }
-
+  // `sentinelPassword`, cluster per-node `nodes[i]`. extractSecrets lives only
+  // in the editor (oneditsave); the runtime only re-injects credentials.
   function mergeSecrets(options, secrets) {
     if (!secrets || typeof secrets !== "object") {
       return options;

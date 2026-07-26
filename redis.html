@@ -193,9 +193,10 @@
 <script type="text/javascript">
   "use strict";
   /*global RED*/
-  // Secret extract/merge for redis-config. MUST stay in sync with the copy in
-  // redis.js (runtime): same paths — single/sentinel `password`, sentinel
-  // `sentinelPassword`, cluster per-node `nodes[i]`.
+  // Secret extract/merge for redis-config. extractSecrets is editor-only
+  // (oneditsave). mergeSecrets MUST stay in sync with redis.js (runtime): same
+  // paths — single/sentinel `password`, sentinel `sentinelPassword`, cluster
+  // per-node `nodes[i]`.
   function extractSecrets(options) {
     var secrets = {};
     if (Array.isArray(options)) {

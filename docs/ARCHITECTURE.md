@@ -115,7 +115,8 @@ Options can come from typedInput values and are evaluated in runtime code.
 
 In JSON mode, passwords are kept in a `text`-type `secrets` credential (encrypted, never in
 `flows.json`) and merged into `options` at runtime; legacy password-in-options still works.
-`extractSecrets`/`mergeSecrets` are mirrored in `redis.js` and `redis.html`.
+`extractSecrets` lives only in the editor (`oneditsave`). `mergeSecrets` is mirrored in
+`redis.js` and `redis.html` and must stay in sync.
 
 ### `redis-in`
 

@@ -46,8 +46,8 @@ Secret storage:
 
 - in JSON mode, passwords are extracted into a `text`-type `secrets` credential (encrypted,
   out of `flows.json`) and merged back into `options` at runtime (`mergeSecrets`) and on editor
-  load; `extractSecrets` strips them on save. The two helper copies in `redis.js` and `redis.html`
-  must stay in sync
+  load; `extractSecrets` (editor-only) strips them on save. The `mergeSecrets` copies in
+  `redis.js` and `redis.html` must stay in sync
 - a legacy password still embedded in `options` keeps working (merge is a no-op without a
   credential) and migrates to the credential when the config is reopened and saved
 - `env` mode is untouched — the secret stays in the environment
