@@ -1,6 +1,6 @@
-# node-red-contrib-redis
+# @pauldeng/node-red-contrib-redis
 
-[![npm version](https://img.shields.io/npm/v/node-red-contrib-redis.svg)](https://www.npmjs.com/package/node-red-contrib-redis)
+[![npm version](https://img.shields.io/npm/v/@pauldeng/node-red-contrib-redis.svg)](https://www.npmjs.com/package/@pauldeng/node-red-contrib-redis)
 [![Node-RED](https://img.shields.io/badge/Node--RED-5.x-red)](https://nodered.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -19,13 +19,13 @@ every call.
 ## Install
 
 In the Node-RED editor, open **Menu > Manage palette > Install**, search for
-`node-red-contrib-redis`, and install it.
+`@pauldeng/node-red-contrib-redis`, and install it.
 
 From the command line, install it in your Node-RED user directory and restart Node-RED:
 
 ```bash
 cd ~/.node-red
-npm install node-red-contrib-redis
+npm install @pauldeng/node-red-contrib-redis
 ```
 
 ## Quickstart
@@ -170,13 +170,6 @@ For advanced commands or Redis modules, prefer `redis-command` before writing a 
 node. `redis-lua-script` _executes_ Lua scripts and Redis Functions, while `FUNCTION *` and
 `SCRIPT *` _management_ subcommands run through `redis-command`. For custom client code that
 really needs ioredis directly, use `redis-instance`.
-
-## Work with AI Agent
-
-1. Support Claude and Codex
-2. Install [superpowers plugin](https://github.com/obra/superpowers)
-3. Install [codegraph](https://github.com/colbymchenry/codegraph)
-4. Enjoy
 
 ## Development And Tests
 
