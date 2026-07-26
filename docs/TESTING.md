@@ -73,7 +73,17 @@ Standalone specs read connection details from:
 - `REDIS_USERNAME`
 - `REDIS_PASSWORD`
 
-The Docker runner sets these automatically for local deployments.
+Unreachable-host status tests also need a TCP address that **refuses** connections:
+
+- `REDIS_BAD_HOST` (default `127.0.0.1`)
+- `REDIS_BAD_PORT` (optional)
+
+When `REDIS_BAD_PORT` is unset, the suite prefers `6399` if that port is closed, otherwise
+it auto-picks a free ephemeral port. If you set `REDIS_BAD_PORT` yourself and something is
+listening there, the suite fails immediately with a clear error instead of reporting
+unrelated "unreachable Redis" timeouts.
+
+The Docker runner sets the good-host variables automatically for local deployments.
 
 ## AWS MemoryDB
 
@@ -120,6 +130,7 @@ Node behavior and lifecycle:
 - `redis_lua_conn_spec.js` — Lua connection isolation across config nodes
 - `redis_lua_ui_spec.js` — Lua editor/library UI; static HTML parse, needs no Redis
 - `redis_credentials_spec.js` — `redis-config` secret merge from the `secrets` credential; constructor-only (no Redis) plus a guarded end-to-end auth case in the auth stage
+- `deployment_bad_port_spec.js` — unreachable-host port helper: loud failure when `REDIS_BAD_PORT` is reachable, auto-pick when default 6399 is occupied (no Redis needed)
 
 Command-family coverage, all driving `redis-command` through `client.call`:
 

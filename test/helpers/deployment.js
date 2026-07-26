@@ -1,5 +1,6 @@
 "use strict";
 
+const { spawnSync } = require("child_process");
 const Redis = require("ioredis");
 
 function intEnv(name, fallback) {
@@ -30,11 +31,75 @@ function redisOptions(overrides = {}) {
   );
 }
 
+// Unreachable-host tests need a TCP port that refuses connections. Prefer the
+// historical default 6399 when it is free; otherwise pick an ephemeral free
+// port. An explicit REDIS_BAD_PORT that is actually reachable fails loudly —
+// that used to produce six confident false failures instead of a clear error.
+function tcpConnectable(host, port) {
+  const script =
+    "const net=require('net');" +
+    "const s=net.connect({host:" +
+    JSON.stringify(host) +
+    ",port:" +
+    Number(port) +
+    "},()=>{s.destroy();process.exit(0)});" +
+    "s.on('error',()=>process.exit(1));" +
+    "setTimeout(()=>{s.destroy();process.exit(1)},200);";
+  return spawnSync(process.execPath, ["-e", script], { encoding: "utf8" }).status === 0;
+}
+
+function allocateFreePort() {
+  const script =
+    "const net=require('net');const s=net.createServer();" +
+    "s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>process.stdout.write(String(p)))});" +
+    "s.on('error',e=>{console.error(e);process.exit(1)});";
+  const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error("failed to allocate a free port for unreachable-host tests: " + result.stderr);
+  }
+  return Number(result.stdout.trim());
+}
+
+let resolvedBadPort;
+
+function badPort() {
+  if (resolvedBadPort !== undefined) {
+    return resolvedBadPort;
+  }
+  const host = process.env.REDIS_BAD_HOST || "127.0.0.1";
+  if (process.env.REDIS_BAD_PORT) {
+    const port = intEnv("REDIS_BAD_PORT");
+    if (tcpConnectable(host, port)) {
+      throw new Error(
+        "REDIS_BAD_PORT=" +
+          port +
+          " on " +
+          host +
+          " is reachable; unreachable-host tests need a closed port. " +
+          "Stop whatever is listening there, or unset REDIS_BAD_PORT to auto-pick."
+      );
+    }
+    resolvedBadPort = port;
+    return resolvedBadPort;
+  }
+  if (!tcpConnectable(host, 6399)) {
+    resolvedBadPort = 6399;
+    return resolvedBadPort;
+  }
+  resolvedBadPort = allocateFreePort();
+  // Publish so sibling helpers/processes see the same choice.
+  process.env.REDIS_BAD_PORT = String(resolvedBadPort);
+  console.warn(
+    "REDIS_BAD_PORT: 6399 on " + host + " is in use; using free port " + resolvedBadPort
+  );
+  return resolvedBadPort;
+}
+
 function badRedisOptions(overrides = {}) {
   return Object.assign(
     withOptionalAuth({
       host: process.env.REDIS_BAD_HOST || "127.0.0.1",
-      port: intEnv("REDIS_BAD_PORT", 6399),
+      port: badPort(),
       retryStrategy: null,
       maxRetriesPerRequest: 1,
       connectTimeout: 300,

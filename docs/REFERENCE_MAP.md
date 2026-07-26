@@ -41,6 +41,7 @@ Node behavior and lifecycle:
 - `../test/redis_lua_conn_spec.js` — Lua connection isolation across config nodes
 - `../test/redis_lua_ui_spec.js` — Lua editor/library UI (static HTML parse, no Redis needed)
 - `../test/redis_credentials_spec.js` — `redis-config` secret merge from the `secrets` credential (single/cluster/sentinel/legacy/env) plus guarded end-to-end auth
+- `../test/deployment_bad_port_spec.js` — unreachable-host port helper (`REDIS_BAD_PORT` loud failure / auto-pick; no Redis needed)
 
 Command-family coverage (all drive `redis-command` via `client.call`):
 

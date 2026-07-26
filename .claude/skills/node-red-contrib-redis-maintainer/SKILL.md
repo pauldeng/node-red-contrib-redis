@@ -43,7 +43,8 @@ Mocha tests (`ls test/*_spec.js` for the live list — do not rely on a hard-cod
 - node behavior/lifecycle: `test/redis_in_spec.js`, `test/redis_out_spec.js`,
   `test/redis_command_spec.js`, `test/redis_status_spec.js`,
   `test/redis_lua_conn_spec.js`, `test/redis_lua_ui_spec.js` (static HTML parse, no Redis needed),
-  `test/redis_credentials_spec.js` (secret merge from the `secrets` credential)
+  `test/redis_credentials_spec.js` (secret merge from the `secrets` credential),
+  `test/deployment_bad_port_spec.js` (unreachable-host port helper; no Redis needed)
 - command families, all driving `redis-command`: `test/bit_commands_spec.js`,
   `test/geo_commands_spec.js`, `test/hash_commands_spec.js`,
   `test/hyperloglog_commands_spec.js`, `test/key_commands_spec.js`,
