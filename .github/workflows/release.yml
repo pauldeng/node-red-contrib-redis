@@ -23,6 +23,7 @@ jobs:
           node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: node -e "const pkg=require('./package.json'); if (pkg.version !== process.env.VERSION) throw new Error(pkg.version + ' !== ' + process.env.VERSION)"
         env:
