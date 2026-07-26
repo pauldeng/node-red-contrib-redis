@@ -639,6 +639,9 @@ module.exports = function (RED) {
               stream,
               lastid
             );
+            if (attempt > 0) {
+              node.status({ fill: "green", shape: "dot", text: "connected" });
+            }
             attempt = 0;
             if (data) {
               data.forEach(function (streamResult) {
@@ -689,6 +692,9 @@ module.exports = function (RED) {
         while (running) {
           try {
             const data = await client[node.command](node.topic, Number(node.timeout));
+            if (attempt > 0) {
+              node.status({ fill: "green", shape: "dot", text: "connected" });
+            }
             attempt = 0;
             if (data !== null && data.length >= 2) {
               var payload = null;

@@ -15,15 +15,26 @@ function direct() {
 
 // Resolves the first time node.status() is called with a matching fill/text — used to
 // observe the node entering its "retrying" backoff state instead of guessing a fixed delay.
-function waitForStatus(node, predicate) {
-  return new Promise((resolve) => {
-    node.on("call:status", function listener(call) {
+function waitForStatus(node, predicate, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer =
+      timeoutMs === undefined
+        ? null
+        : setTimeout(() => {
+            node.removeListener("call:status", listener);
+            reject(new Error("waitForStatus timed out after " + timeoutMs + "ms"));
+          }, timeoutMs);
+    function listener(call) {
       const status = call.args[0];
       if (status && predicate(status)) {
+        if (timer) {
+          clearTimeout(timer);
+        }
         node.removeListener("call:status", listener);
         resolve(status);
       }
-    });
+    }
+    node.on("call:status", listener);
   });
 }
 
@@ -627,6 +638,49 @@ describe("redis-in node", function () {
     (await retrying).fill.should.equal("yellow");
   });
 
+  it("xreadgroup — clears retrying status after the consumer group is created", async function () {
+    // After NOGROUP recovery the loop keeps delivering, but a stale yellow "retrying"
+    // status must not stick for the life of the node.
+    const STREAM = "test:in:xrg:statusrecover";
+    const GROUP = "grp-statusrecover";
+    const c = direct();
+    await c.del(STREAM);
+
+    await helper.load(
+      redisNode,
+      makeInFlow("xreadgroup", `${STREAM}:>`, true, {
+        timeout: 0,
+        groupname: GROUP,
+        consumername: "consumer-1",
+      })
+    );
+    const inNode = helper.getNode("in");
+    const h = helper.getNode("h");
+    await waitForStatus(inNode, (status) => status.text === "retrying");
+
+    // Status is restored before send(), so watch for green before the recovery write.
+    const connectedP = waitForStatus(
+      inNode,
+      (status) => status.fill === "green" && status.text === "connected",
+      8000
+    );
+    const msgP = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("no message after XGROUP CREATE")), 8000);
+      h.once("input", (m) => {
+        clearTimeout(timer);
+        resolve(m);
+      });
+    });
+
+    await c.xgroup("CREATE", STREAM, GROUP, "$", "MKSTREAM");
+    await c.xadd(STREAM, "*", "k", "after-recovery");
+
+    const msg = await msgP;
+    msg.payload.k.should.equal("after-recovery");
+    (await connectedP).fill.should.equal("green");
+    c.disconnect();
+  });
+
   // ── bzpopmin ───────────────────────────────────────────────────────────
 
   it("bzpopmin — emits {member, score} popping the lowest-score element first", function (done) {
@@ -728,6 +782,44 @@ describe("redis-in node", function () {
   });
 
   // ── auto-recovery ────────────────────────────────────────────────────────
+
+  it("blpop — clears retrying status after a transient connection error", async function () {
+    const originalBlpop = Redis.prototype.blpop;
+    Redis.prototype.blpop = function () {
+      Redis.prototype.blpop = originalBlpop;
+      return Promise.reject(new Error("Connection is closed."));
+    };
+
+    try {
+      await helper.load(redisNode, makeInFlow("blpop", "test:in:recover:status", false));
+      const inNode = helper.getNode("in");
+      const h = helper.getNode("h");
+      await waitForStatus(inNode, (s) => s.fill === "yellow" && s.text === "retrying");
+
+      // Status is restored before send(), so watch for green before the recovery write.
+      const connectedP = waitForStatus(
+        inNode,
+        (status) => status.fill === "green" && status.text === "connected",
+        8000
+      );
+      const msgP = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("no message after blpop recovery")), 8000);
+        h.once("input", (m) => {
+          clearTimeout(timer);
+          resolve(m);
+        });
+      });
+
+      const c = direct();
+      await c.rpush("test:in:recover:status", "after-recovery");
+      const msg = await msgP;
+      msg.payload.should.equal("after-recovery");
+      (await connectedP).fill.should.equal("green");
+      c.disconnect();
+    } finally {
+      Redis.prototype.blpop = originalBlpop;
+    }
+  });
 
   it("blpop — recovers and keeps consuming after a transient connection error", function (done) {
     const originalBlpop = Redis.prototype.blpop;
