@@ -142,7 +142,10 @@ module.exports = {
 async function startNodeRed(initialOptions) {
   const userDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-red-contrib-redis-pw-"));
   fs.mkdirSync(path.join(userDir, "lib", "functions"), { recursive: true });
-  fs.writeFileSync(path.join(userDir, "flows.json"), JSON.stringify(baseFlow(initialOptions), null, 2));
+  fs.writeFileSync(
+    path.join(userDir, "flows.json"),
+    JSON.stringify(baseFlow(initialOptions), null, 2)
+  );
   fs.writeFileSync(path.join(userDir, "flows_cred.json"), "{}");
   const settingsPath = writeSettings(userDir);
   const port = await getFreePort();
@@ -192,7 +195,9 @@ async function startNodeRed(initialOptions) {
 async function openEditor(page, url) {
   await page.goto(url);
   await page.waitForFunction(() => window.RED && RED.nodes && RED.editor && RED.comms);
-  await page.waitForFunction(() => RED.nodes.node("redis-ping") && RED.nodes.node("redis-config-1"));
+  await page.waitForFunction(
+    () => RED.nodes.node("redis-ping") && RED.nodes.node("redis-config-1")
+  );
   await page.waitForSelector("#red-ui-header-button-deploy", { state: "visible" });
 }
 
@@ -233,11 +238,15 @@ async function injectPing(page) {
 }
 
 async function expectDebugPong(page) {
-  await page.waitForFunction(() => {
-    return Array.from(document.querySelectorAll(".red-ui-debug-msg .red-ui-debug-msg-payload")).some((el) =>
-      /PONG/.test(el.textContent || "")
-    );
-  }, null, { timeout: 10000 });
+  await page.waitForFunction(
+    () => {
+      return Array.from(
+        document.querySelectorAll(".red-ui-debug-msg .red-ui-debug-msg-payload")
+      ).some((el) => /PONG/.test(el.textContent || ""));
+    },
+    null,
+    { timeout: 10000 }
+  );
 }
 
 async function setSelectValue(page, selector, value) {

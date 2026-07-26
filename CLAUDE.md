@@ -181,6 +181,8 @@ When user-visible behavior changes:
 - update the relevant help text in `redis.html`
 - update or add an example flow if it improves discoverability
 - update the matching document under `docs/`
+- add an entry to `CHANGELOG.md` under the unreleased version, and call out anything that changes
+  existing flow behavior under **Breaking changes**
 
 When features are added, behavior changes, tests move, examples drift, or maintenance rules
 change, update the relevant docs and agent guidance in the same change. Keep agent-facing

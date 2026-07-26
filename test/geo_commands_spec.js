@@ -96,14 +96,7 @@ describe("Geo commands", function () {
 
       geoaddNode.receive({
         topic: "test:geo:geokey",
-        payload: [
-          "13.361389",
-          "38.115556",
-          "Palermo",
-          "15.087269",
-          "37.502669",
-          "Catania",
-        ],
+        payload: ["13.361389", "38.115556", "Palermo", "15.087269", "37.502669", "Catania"],
       });
     });
   });
@@ -324,27 +317,13 @@ describe("Geo commands", function () {
       geoaddHelper.on("input", () => {
         geosearchNode.receive({
           topic: "test:geo:searchkey",
-          payload: [
-            "FROMMEMBER",
-            "Palermo",
-            "BYRADIUS",
-            "200",
-            "km",
-            "ASC",
-          ],
+          payload: ["FROMMEMBER", "Palermo", "BYRADIUS", "200", "km", "ASC"],
         });
       });
 
       geoaddNode.receive({
         topic: "test:geo:searchkey",
-        payload: [
-          "13.361389",
-          "38.115556",
-          "Palermo",
-          "15.087269",
-          "37.502669",
-          "Catania",
-        ],
+        payload: ["13.361389", "38.115556", "Palermo", "15.087269", "37.502669", "Catania"],
       });
     });
   });
@@ -414,28 +393,13 @@ describe("Geo commands", function () {
       geoaddHelper.on("input", () => {
         geosearchstoreNode.receive({
           topic: "test:geo:storedst",
-          payload: [
-            "test:geo:storesrc",
-            "FROMMEMBER",
-            "Palermo",
-            "BYRADIUS",
-            "200",
-            "km",
-            "ASC",
-          ],
+          payload: ["test:geo:storesrc", "FROMMEMBER", "Palermo", "BYRADIUS", "200", "km", "ASC"],
         });
       });
 
       geoaddNode.receive({
         topic: "test:geo:storesrc",
-        payload: [
-          "13.361389",
-          "38.115556",
-          "Palermo",
-          "15.087269",
-          "37.502669",
-          "Catania",
-        ],
+        payload: ["13.361389", "38.115556", "Palermo", "15.087269", "37.502669", "Catania"],
       });
     });
   });
@@ -508,14 +472,7 @@ describe("Geo commands", function () {
 
       geoaddNode.receive({
         topic: "test:geo:radiuskey",
-        payload: [
-          "13.361389",
-          "38.115556",
-          "Palermo",
-          "15.087269",
-          "37.502669",
-          "Catania",
-        ],
+        payload: ["13.361389", "38.115556", "Palermo", "15.087269", "37.502669", "Catania"],
       });
     });
   });
@@ -589,14 +546,7 @@ describe("Geo commands", function () {
 
       geoaddNode.receive({
         topic: "test:geo:membkey",
-        payload: [
-          "13.361389",
-          "38.115556",
-          "Palermo",
-          "15.087269",
-          "37.502669",
-          "Catania",
-        ],
+        payload: ["13.361389", "38.115556", "Palermo", "15.087269", "37.502669", "Catania"],
       });
     });
   });

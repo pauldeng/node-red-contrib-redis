@@ -1139,13 +1139,7 @@ describe("List commands", function () {
 
       lpushHelper.on("input", () => {
         blmoveNode.receive({
-          payload: [
-            "test:list:blmovesrc",
-            "test:list:blmovedst",
-            "LEFT",
-            "RIGHT",
-            "1",
-          ],
+          payload: ["test:list:blmovesrc", "test:list:blmovedst", "LEFT", "RIGHT", "1"],
         });
       });
 

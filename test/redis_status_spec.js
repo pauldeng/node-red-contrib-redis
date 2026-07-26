@@ -787,6 +787,95 @@ describe("node connection status", function () {
     });
   });
 
+  // ── gracefulQuit fallbacks ─────────────────────────────────────────────
+  // gracefulQuit defends against a QUIT that never completes. Both fallbacks are driven
+  // here by patching the shared ioredis prototype, the same technique the graceful
+  // shutdown block above uses.
+  describe("graceful shutdown fallbacks", function () {
+    let originalQuit;
+    let originalDisconnect;
+    let disconnectCalled;
+    let pendingQuitReject;
+
+    const OUT_FLOW = [
+      GOOD_CONFIG,
+      {
+        id: "n1",
+        type: "redis-out",
+        server: "cfg-good",
+        command: "rpush",
+        topic: "shutdown:fallback",
+        obj: false,
+        wires: [],
+      },
+    ];
+
+    beforeEach(function () {
+      disconnectCalled = false;
+      pendingQuitReject = null;
+      originalQuit = Redis.prototype.quit;
+      originalDisconnect = Redis.prototype.disconnect;
+      // A real ioredis disconnect() settles an in-flight QUIT; emulate that so the
+      // forced-disconnect path can actually unblock the awaited quit().
+      Redis.prototype.disconnect = function (...args) {
+        disconnectCalled = true;
+        if (pendingQuitReject) {
+          const reject = pendingQuitReject;
+          pendingQuitReject = null;
+          reject(new Error("Connection is closed."));
+        }
+        return originalDisconnect.apply(this, args);
+      };
+    });
+
+    afterEach(function () {
+      Redis.prototype.quit = originalQuit;
+      Redis.prototype.disconnect = originalDisconnect;
+    });
+
+    it("forces a disconnect when quit() stalls past the graceful timeout", async function () {
+      this.timeout(15000);
+      Redis.prototype.quit = function () {
+        return new Promise(function (_resolve, reject) {
+          pendingQuitReject = reject;
+        });
+      };
+
+      await helper.load(redisNode, OUT_FLOW);
+      await new Promise((resolve) => onStatus(helper.getNode("n1"), isGreen, resolve));
+
+      const started = Date.now();
+      await helper.unload();
+      const elapsed = Date.now() - started;
+
+      assert.ok(disconnectCalled, "a stalled quit() must be followed by a forced disconnect");
+      assert.ok(
+        elapsed >= 1900,
+        `shutdown should wait for the graceful timeout before forcing, waited ${elapsed}ms`
+      );
+    });
+
+    it("falls back to disconnect() when quit() rejects", async function () {
+      this.timeout(15000);
+      Redis.prototype.quit = function () {
+        return Promise.reject(new Error("QUIT refused"));
+      };
+
+      await helper.load(redisNode, OUT_FLOW);
+      await new Promise((resolve) => onStatus(helper.getNode("n1"), isGreen, resolve));
+
+      const started = Date.now();
+      await helper.unload();
+      const elapsed = Date.now() - started;
+
+      assert.ok(disconnectCalled, "a rejected quit() must fall back to a forced disconnect");
+      assert.ok(
+        elapsed < 1900,
+        `a rejected quit() should not wait for the graceful timeout, waited ${elapsed}ms`
+      );
+    });
+  });
+
   // ── missing/invalid redis-config ───────────────────────────────────────
   // Historically, a dangling or unusable `server` reference made getConn()
   // return `undefined`, and the caller (e.g. attachStatusListeners) then

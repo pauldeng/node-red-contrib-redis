@@ -545,12 +545,7 @@ describe("Stream commands", function () {
 
       xaddHelper.on("input", () => {
         xgroupNode.receive({
-          payload: [
-            "CREATE",
-            "test:stream:xgroup",
-            "mygroup",
-            "0",
-          ],
+          payload: ["CREATE", "test:stream:xgroup", "mygroup", "0"],
         });
       });
 
@@ -994,13 +989,7 @@ describe("Stream commands", function () {
           msg.payload.should.be.an.Array();
           const entryId = msg.payload[0][1][0][0];
           xclaimNode.receive({
-            payload: [
-              "test:stream:xclaim",
-              "xclaimgroup",
-              "consumer2",
-              "0",
-              entryId,
-            ],
+            payload: ["test:stream:xclaim", "xclaimgroup", "consumer2", "0", entryId],
           });
         } catch (err) {
           done(err);
@@ -1124,13 +1113,7 @@ describe("Stream commands", function () {
 
       xreadgroupHelper.on("input", () => {
         xautoclaimNode.receive({
-          payload: [
-            "test:stream:xautoclaim",
-            "xacgroup",
-            "consumer2",
-            "0",
-            "0-0",
-          ],
+          payload: ["test:stream:xautoclaim", "xacgroup", "consumer2", "0", "0-0"],
         });
       });
 

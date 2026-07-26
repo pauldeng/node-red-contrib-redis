@@ -5,7 +5,9 @@
 **Reviewed prior review:** `docs/superpowers/plans/2026-07-13-review-redis-8-8-project-hardening.md`  
 **Implementation reviewed:** uncommitted working-tree changes on `claude-review` relative to
 `HEAD` (`1d1bf99`)  
-**Review status:** changes requested
+**Review status:** conditions 1–4, 6, and 7 resolved; 5, 8, and 9 partially outstanding.
+See [Resolution record (2026-07-26)](#resolution-record-2026-07-26) at the end of this document
+for what was verified and how.
 
 ## Executive verdict
 
@@ -383,3 +385,38 @@ Before approval:
 
 No architecture split, new dependency, or broad connection-lifecycle refactor is needed to satisfy
 these conditions.
+
+## Resolution record (2026-07-26)
+
+Each condition was re-checked against the working tree rather than against the commit messages.
+The evidence column names what was inspected so the next reader can repeat the check.
+
+| #   | Condition                             | Status      | Evidence                                                                                                                                                                                                                                                                                                                         |
+| --- | ------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Case-insensitive HSET/MSET objects    | Resolved    | `dispatchCommandName` + `ARGUMENT_TRANSFORM_COMMANDS` in `redis.js`; uppercase and lowercase cases in `test/redis_command_spec.js`; documented in `redis.html` and `docs/NODE_GUIDE.md`                                                                                                                                          |
+| 2   | Scalar static `Params` incl. `null`   | Resolved    | Explicit-payload logic in `RedisCmd`; `scalarCases` and `scalarParamsCases` in `test/redis_command_spec.js`; contract documented in the `redis-command` help                                                                                                                                                                     |
+| 3   | Redis 8.8 suggestion set verified     | Resolved    | `test/redis_8_8_data_types_spec.js` → "redis-command datalist vs. live COMMAND LIST" cross-checks the editor datalist against a live deployment                                                                                                                                                                                  |
+| 4   | Stream runtime/help/README/example    | Resolved    | Last-colon topic split in `redis.js`, documented in `redis.html` and `README.md`; `examples/redis-streams.json` present                                                                                                                                                                                                          |
+| 5   | Promise chains, fixed waits, comments | **Partial** | Stale test comments corrected. Promise chains are **not** replaced: 60 `.then()` occurrences remain across 20 spec files, plus fixed `setTimeout` waits in `redis_out_spec.js` and `redis_in_spec.js`. `redis.js` itself is clean. Needs a decision — see below                                                                  |
+| 6   | Formatting                            | Resolved    | `npx prettier --check .` passes repo-wide as of this change (25 previously drifted files reformatted; example flows verified whitespace-only by parsing before and after)                                                                                                                                                        |
+| 7   | Full audit documented, no downgrades  | Resolved    | `docs/TESTING.md` "Dependency audit" refreshed to the current result and restructured around the invariant rather than a fixed count, so it degrades to "dated observation" instead of "wrong"                                                                                                                                   |
+| 8   | Package allowlist and tarball         | **Partial** | `files` allowlist present; `npm pack --dry-run` verified as 18 files (`redis.js`, `redis.html`, `icons/`, `examples/`, README assets, `CHANGELOG.md`, `LICENSE`, `README.md`, `package.json`) with no tests, deployment infrastructure, or agent docs. Installing that tarball into a clean Node-RED is **not** recorded as done |
+| 9   | MemoryDB and Node.js 24 verification  | **Partial** | Node.js verified: `v24.5.0`, full Docker matrix green. MemoryDB is opt-in via `MEMORYDB_*` and is **outstanding** — not exercised in this environment                                                                                                                                                                            |
+
+### Condition 5 — outstanding decision
+
+Rewriting 60 `.then()` chains across 20 spec files is a purely mechanical diff with no behavior
+change and real review cost. The alternative is to narrow the repository rule so the
+`async`/`await` requirement is binding on runtime code and on newly added tests, and convert
+existing specs opportunistically when they are edited for another reason. Either resolves the
+condition; the choice belongs to a human. Until then this condition stays open.
+
+Note that tests added after this record — the subscribe-failure, NOGROUP, `gracefulQuit`
+fallback, anchored-`NOSCRIPT`, and load-coalescing cases — are written with `async`/`await`, so
+the gap is confined to pre-existing specs.
+
+### Not covered by this record
+
+The credential leak documented under **Security / Known issue** in `CHANGELOG.md` (a password
+inside a `redis://user:pass@host` URL is not redacted in the connection-test error path) was
+identified during review and deliberately deferred. It is not one of the nine conditions above.

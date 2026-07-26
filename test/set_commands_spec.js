@@ -444,11 +444,7 @@ describe("Set commands", function () {
         try {
           msg.payload.should.equal(4);
           delNode.receive({
-            payload: [
-              "test:set:sus1",
-              "test:set:sus2",
-              "test:set:sudst",
-            ],
+            payload: ["test:set:sus1", "test:set:sus2", "test:set:sudst"],
           });
         } catch (err) {
           done(err);

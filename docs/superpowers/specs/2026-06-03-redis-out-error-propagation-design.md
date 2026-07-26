@@ -13,10 +13,10 @@ The `redis-out` input handler (`redis.js:582-627`) issues its Redis write **fire
 and then calls `done()` synchronously:
 
 ```js
-client.xadd(topic, "*", ...fields);   // not awaited, no callback, no .catch
+client.xadd(topic, "*", ...fields); // not awaited, no callback, no .catch
 // ...
 client[node.command](topic, msg.payload);
-done();                                // reports success regardless of outcome
+done(); // reports success regardless of outcome
 ```
 
 ioredis command methods return a promise. When the write fails — `WRONGTYPE`, `OOM`,
@@ -28,7 +28,7 @@ cluster `CROSSSLOT`, a connection drop mid-write, or wrong arity — that promis
    **no Catch node fires**.
 3. The flow has no way to know the write was lost.
 
-The existing `try/catch` only catches *synchronous* throws (e.g. an unknown command method),
+The existing `try/catch` only catches _synchronous_ throws (e.g. an unknown command method),
 not the async rejection that carries every real Redis error.
 
 This is inconsistent with the sibling nodes: `redis-command` (`redis.js:702-710`) and
@@ -36,7 +36,7 @@ This is inconsistent with the sibling nodes: `redis-command` (`redis.js:702-710`
 the outlier.
 
 The gap is **untested**: every `catch`/`done(err)` in `test/redis_out_spec.js` is test-harness
-plumbing that asserts the written value, never an assertion that a write *failure* surfaces.
+plumbing that asserts the written value, never an assertion that a write _failure_ surfaces.
 
 ## Goals
 
@@ -75,11 +75,18 @@ inside one `try/catch`:
 
 ```js
 node.on("input", async function (msg, send, done) {
-  send = send || function () { node.send.apply(node, arguments); };
-  done = done || function (err) { if (err) node.error(err, msg); };
+  send =
+    send ||
+    function () {
+      node.send.apply(node, arguments);
+    };
+  done =
+    done ||
+    function (err) {
+      if (err) node.error(err, msg);
+    };
 
-  const topic =
-    msg.topic !== undefined && msg.topic !== "" ? msg.topic : node.topic;
+  const topic = msg.topic !== undefined && msg.topic !== "" ? msg.topic : node.topic;
   if (topic === "") {
     done(new Error("Missing topic, please send topic on msg or set Topic on node."));
     return;
@@ -123,12 +130,12 @@ node.on("input", async function (msg, send, done) {
 ## Invariants preserved
 
 - **Write ordering is unchanged.** `client[cmd](...)` is evaluated (and the command enqueued in
-  ioredis) *before* `await` suspends, so writes enter the connection queue in message-arrival
+  ioredis) _before_ `await` suspends, so writes enter the connection queue in message-arrival
   order exactly as today. `await` only defers `done()`, not the issue order.
 - **Sync short-circuits stay synchronous.** The empty-topic guard and the `zadd`
   "requires {score, member}" validation still `return done(err)` before any command is issued.
 - **One `try/catch` now covers both failure modes** — the synchronous throw it already caught
-  (unknown command method) *and* the async rejection it used to drop.
+  (unknown command method) _and_ the async rejection it used to drop.
 - **Throughput.** ioredis still auto-pipelines on the wire; Node-RED does not block on `done()`
   before delivering the next message, so concurrent in-flight writes remain possible.
 

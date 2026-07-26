@@ -26,7 +26,7 @@ only along its two execution models below; management stays in `redis-command`.
 ## Approach
 
 Mode + flags, with the command **derived in the runtime** from `(mode, stored, readonly)` — not an
-explicit command dropdown. This preserves the existing `Stored` checkbox semantics (`EVALSHA` *is*
+explicit command dropdown. This preserves the existing `Stored` checkbox semantics (`EVALSHA` _is_
 "stored") and keeps every saved flow byte-for-byte backward compatible (a node with no new fields
 defaults to today's behavior).
 
@@ -43,14 +43,14 @@ The node supports two execution models that mirror each other:
 
 ### Command resolution
 
-| mode | stored | readonly | on `ready` | on input | recovery |
-|------|--------|----------|-----------|----------|----------|
-| script | ✗ | ✗ | — | `EVAL` | — |
-| script | ✗ | ✓ | — | `EVAL_RO` | — |
-| script | ✓ | ✗ | `SCRIPT LOAD` | `EVALSHA` | `NOSCRIPT` → `EVAL` |
-| script | ✓ | ✓ | `SCRIPT LOAD` | `EVALSHA_RO` | `NOSCRIPT` → `EVAL_RO` |
-| function | (n/a) | ✗ | `FUNCTION LOAD REPLACE` | `FCALL` | "function not found" → reload → retry once |
-| function | (n/a) | ✓ | `FUNCTION LOAD REPLACE` | `FCALL_RO` | "function not found" → reload → retry once |
+| mode     | stored | readonly | on `ready`              | on input     | recovery                                   |
+| -------- | ------ | -------- | ----------------------- | ------------ | ------------------------------------------ |
+| script   | ✗      | ✗        | —                       | `EVAL`       | —                                          |
+| script   | ✗      | ✓        | —                       | `EVAL_RO`    | —                                          |
+| script   | ✓      | ✗        | `SCRIPT LOAD`           | `EVALSHA`    | `NOSCRIPT` → `EVAL`                        |
+| script   | ✓      | ✓        | `SCRIPT LOAD`           | `EVALSHA_RO` | `NOSCRIPT` → `EVAL_RO`                     |
+| function | (n/a)  | ✗        | `FUNCTION LOAD REPLACE` | `FCALL`      | "function not found" → reload → retry once |
+| function | (n/a)  | ✓        | `FUNCTION LOAD REPLACE` | `FCALL_RO`   | "function not found" → reload → retry once |
 
 ioredis exposes `eval_ro`, `evalsha_ro`, `fcall`, `fcall_ro` as methods accepting the same
 args-array form already used for `eval`/`evalsha` (verified against ioredis v5.11.0). Called
@@ -85,7 +85,7 @@ string `"true"`/`"false"` — matching the existing checkbox pattern enforced by
 getters must return a string, not a boolean).
 
 **Library-open visibility wrinkle:** when a library entry is opened, Node-RED restores each field
-through its `set`/`.val()` *without firing a change event*. So the `mode` field must use a custom
+through its `set`/`.val()` _without firing a change event_. So the `mode` field must use a custom
 `set` that both sets the value **and** re-applies the Script/Function field visibility (otherwise
 opening a saved Function-mode library would leave the `Stored` checkbox showing and the
 `Function name` field hidden). The same visibility refresh runs from `oneditprepare` so a node
@@ -211,14 +211,14 @@ strategy).
 
 ## Documentation
 
-The split between *execution* (this node) and *management* (`redis-command`) must be stated
+The split between _execution_ (this node) and _management_ (`redis-command`) must be stated
 explicitly in user-facing help and in the maintainer docs, on **both** node sides so users find it
 from either direction.
 
 - `redis.html` **`redis-lua-script` help text**: document `Mode` (Script/Function), `Read-only`,
   `Function name`, the required `#!lua name=<lib>` shebang for the library source, the
   `FUNCTION LOAD REPLACE`-on-deploy behavior and missing-function recovery. Add an explicit
-  **"Managing scripts and functions"** note stating that this node only *executes* scripts and
+  **"Managing scripts and functions"** note stating that this node only _executes_ scripts and
   functions, and that the management/admin subcommands are run through the **`redis-command`** node:
   `SCRIPT DEBUG/EXISTS/FLUSH/KILL/LOAD` and `FUNCTION DELETE/DUMP/FLUSH/KILL/LIST/LOAD/RESTORE/STATS`
   (select `SCRIPT`/`FUNCTION` and pass the subcommand + args in `msg.payload`).
@@ -241,8 +241,8 @@ from either direction.
     `FCALL` pattern), next to the existing `redis-lua-script.json` entry.
   - **"Message Patterns" / advanced-commands note** — extend the existing
     "prefer `redis-command` before writing a Function node" paragraph with the explicit
-    execution-vs-management split: `redis-lua-script` *executes* scripts/functions, while
-    `FUNCTION *` / `SCRIPT *` *management* subcommands run through `redis-command`.
+    execution-vs-management split: `redis-lua-script` _executes_ scripts/functions, while
+    `FUNCTION *` / `SCRIPT *` _management_ subcommands run through `redis-command`.
   - Quickstart (optional): broaden the "**redis lua** for atomic Lua scripts" line to mention
     Redis Functions.
 - **Example flow `examples/redis-fcall.json`** (new): demonstrates the Function model end to end.

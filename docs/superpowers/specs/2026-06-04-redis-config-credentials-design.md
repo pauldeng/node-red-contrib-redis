@@ -60,6 +60,7 @@ Only non-empty secrets are included.
 Both copies must stay in sync; each will carry a comment saying so.
 
 `extractSecrets(options)` → `{ stripped, secrets }`:
+
 - array (cluster): `secrets.nodes = options.map(n => (n && n.password) || "")` (include only if any
   non-empty); `stripped` = each node copied without `password`.
 - object with `sentinels` (sentinel): `secrets.password = options.password` and
@@ -85,7 +86,10 @@ options unchanged.
 - In `RedisConfig`, after `this.options = evaluateConnectionOptions(...)` and only when
   `this.optionsType !== "env"`:
   ```js
-  this.options = mergeSecrets(this.options, parseSecrets(this.credentials && this.credentials.secrets));
+  this.options = mergeSecrets(
+    this.options,
+    parseSecrets(this.credentials && this.credentials.secrets)
+  );
   ```
   where `parseSecrets` is a guarded `JSON.parse` returning `{}` on empty/invalid input.
 - **Backward compatible:** no credential → `mergeSecrets` is a no-op, so a legacy password in

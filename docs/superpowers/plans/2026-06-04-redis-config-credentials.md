@@ -30,18 +30,22 @@
 - [ ] **Step 1: Start a password-protected standalone Redis**
 
 Run:
+
 ```bash
 sudo -n docker run -d --rm --name redis-dev -p 127.0.0.1:6379:6379 \
   redis:8.8-alpine redis-server --requirepass devpass --save "" --appendonly no
 ```
+
 Expected: prints a container id.
 
 - [ ] **Step 2: Confirm auth works**
 
 Run:
+
 ```bash
 sudo -n docker exec redis-dev redis-cli -a devpass ping
 ```
+
 Expected: `PONG` (a warning about using a password on the CLI is fine).
 
 > Auth lets the local end-to-end test run. Stop this Redis (Task 6) before any hook-running commit.
@@ -51,6 +55,7 @@ Expected: `PONG` (a warning about using a password on the CLI is fine).
 ## Task 1: RED — create the credentials spec
 
 **Files:**
+
 - Create: `test/redis_credentials_spec.js`
 
 - [ ] **Step 1: Write the spec**
@@ -85,8 +90,12 @@ function loadWithCreds(flow, creds) {
 describe("redis-config credential secret merge", function () {
   this.timeout(8000);
 
-  beforeEach(function (done) { helper.startServer(done); });
-  afterEach(function (done) { helper.unload().then(() => helper.stopServer(done)); });
+  beforeEach(function (done) {
+    helper.startServer(done);
+  });
+  afterEach(function (done) {
+    helper.unload().then(() => helper.stopServer(done));
+  });
 
   it("merges the single-mode password from the secrets credential into options", async function () {
     await loadWithCreds([cfg({ host: "127.0.0.1", port: 6379 }, "json", false)], {
@@ -96,9 +105,21 @@ describe("redis-config credential secret merge", function () {
   });
 
   it("merges cluster per-node passwords by index", async function () {
-    await loadWithCreds([cfg([{ host: "h1", port: 7000 }, { host: "h2", port: 7001 }], "json", true)], {
-      cfg: { secrets: JSON.stringify({ nodes: ["a", "b"] }) },
-    });
+    await loadWithCreds(
+      [
+        cfg(
+          [
+            { host: "h1", port: 7000 },
+            { host: "h2", port: 7001 },
+          ],
+          "json",
+          true
+        ),
+      ],
+      {
+        cfg: { secrets: JSON.stringify({ nodes: ["a", "b"] }) },
+      }
+    );
     const opts = helper.getNode("cfg").options;
     opts[0].password.should.equal("a");
     opts[1].password.should.equal("b");
@@ -115,7 +136,10 @@ describe("redis-config credential secret merge", function () {
   });
 
   it("keeps a legacy password embedded in options when no credential is set", async function () {
-    await loadWithCreds([cfg({ host: "127.0.0.1", port: 6379, password: "legacy" }, "json", false)], {});
+    await loadWithCreds(
+      [cfg({ host: "127.0.0.1", port: 6379, password: "legacy" }, "json", false)],
+      {}
+    );
     helper.getNode("cfg").options.password.should.equal("legacy");
   });
 
@@ -132,9 +156,17 @@ describe("redis-config credential secret merge", function () {
   });
 
   it("authenticates using the password supplied via the secrets credential", async function () {
-    if (!process.env.REDIS_PASSWORD) { this.skip(); return; }
-    const opts = { host: process.env.REDIS_HOST || "127.0.0.1", port: Number(process.env.REDIS_PORT || 6379) };
-    if (process.env.REDIS_USERNAME) { opts.username = process.env.REDIS_USERNAME; }
+    if (!process.env.REDIS_PASSWORD) {
+      this.skip();
+      return;
+    }
+    const opts = {
+      host: process.env.REDIS_HOST || "127.0.0.1",
+      port: Number(process.env.REDIS_PORT || 6379),
+    };
+    if (process.env.REDIS_USERNAME) {
+      opts.username = process.env.REDIS_USERNAME;
+    }
     await loadWithCreds(
       [cfg(opts, "json", false), commandNode("getcred", "GET", "cfg"), helperNode("getcred")],
       { cfg: { secrets: JSON.stringify({ password: process.env.REDIS_PASSWORD }) } }
@@ -149,9 +181,11 @@ describe("redis-config credential secret merge", function () {
 - [ ] **Step 2: Run and verify the merge tests FAIL**
 
 Run:
+
 ```bash
 REDIS_PASSWORD=devpass npm run test:mocha -- test/redis_credentials_spec.js
 ```
+
 Expected: **2 passing, 4 failing**. The three merge tests (single/cluster/sentinel) fail with `TypeError: Cannot read properties of undefined (reading 'should')` because the password is never injected, and the end-to-end auth test fails because, without the runtime merge, the credential password is not applied so the connection cannot authenticate against the auth dev Redis. The "legacy" (password already in options) and "env" (merge skipped) tests pass.
 
 - [ ] **Step 3: Commit the failing spec (skip the hook — the matrix would fail on the intentional RED)**
@@ -168,16 +202,20 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 2: GREEN (runtime) — merge secrets in redis.js
 
 **Files:**
+
 - Modify: `redis.js` (add helpers just above `function RedisConfig(n)`; merge in the constructor; add credentials to `registerType`)
 
 - [ ] **Step 1: Add the helpers above `RedisConfig`**
 
 Find:
+
 ```javascript
 function RedisConfig(n) {
     RED.nodes.createNode(this, n);
 ```
+
 Replace with:
+
 ```javascript
   // Secret extract/merge for redis-config. MUST stay in sync with the copy in
   // redis.html (editor): same paths — single/sentinel `password`, sentinel
@@ -247,6 +285,7 @@ function RedisConfig(n) {
 - [ ] **Step 2: Merge in the constructor and register the credential**
 
 Find:
+
 ```javascript
       this.options = evaluateConnectionOptions(n.options, this.optionsType, this);
       this.cluster = isClusterConnection(this.options, this.cluster);
@@ -257,7 +296,9 @@ Find:
   }
   RED.nodes.registerType("redis-config", RedisConfig);
 ```
+
 Replace with:
+
 ```javascript
       this.options = evaluateConnectionOptions(n.options, this.optionsType, this);
       if (this.optionsType !== "env") {
@@ -282,9 +323,11 @@ Replace with:
 - [ ] **Step 3: Run the spec; merge + auth tests pass**
 
 Run:
+
 ```bash
 REDIS_PASSWORD=devpass npm run test:mocha -- test/redis_credentials_spec.js
 ```
+
 Expected: `6 passing` (the three merge tests now pass; legacy/env still pass; end-to-end auth connects to the dev Redis using the credential password and resolves).
 
 ---
@@ -292,17 +335,21 @@ Expected: `6 passing` (the three merge tests now pass; legacy/env still pass; en
 ## Task 3: GREEN (editor) — divert secrets in redis.html
 
 **Files:**
+
 - Modify: `redis.html` (`redis-config` `<script>`: helpers, credentials, hidden input, `oneditprepare`, `oneditsave`)
 
 - [ ] **Step 1: Mirror the helpers at the top of the redis-config script**
 
 Find:
+
 ```javascript
     "use strict";
     /*global RED*/
     RED.nodes.registerType('redis-config', {
 ```
+
 Replace with:
+
 ```javascript
     "use strict";
     /*global RED*/
@@ -368,11 +415,14 @@ Replace with:
 - [ ] **Step 2: Declare the credential**
 
 Find:
+
 ```javascript
             optionsType: { value: "json" }
         },
 ```
+
 Replace with:
+
 ```javascript
             optionsType: { value: "json" }
         },
@@ -384,87 +434,112 @@ Replace with:
 - [ ] **Step 3: Add the hidden credential input to the template**
 
 Find:
+
 ```html
-    <input type="hidden" id="node-config-input-options">
-    <input type="hidden" id="node-config-input-optionsType">
+<input type="hidden" id="node-config-input-options" />
+<input type="hidden" id="node-config-input-optionsType" />
 ```
+
 Replace with:
+
 ```html
-    <input type="hidden" id="node-config-input-options">
-    <input type="hidden" id="node-config-input-optionsType">
-    <input type="hidden" id="node-config-input-secrets">
+<input type="hidden" id="node-config-input-options" />
+<input type="hidden" id="node-config-input-optionsType" />
+<input type="hidden" id="node-config-input-secrets" />
 ```
 
 - [ ] **Step 4: Merge the credential back on load**
 
 Find:
+
 ```javascript
-            var initialOptions = parseJsonOptions();
-            populateFormFromOptions(initialOptions || {});
+var initialOptions = parseJsonOptions();
+populateFormFromOptions(initialOptions || {});
 ```
+
 Replace with:
+
 ```javascript
-            var initialOptions = mergeSecrets(parseJsonOptions() || {}, parseSecrets($("#node-config-input-secrets").val()));
-            populateFormFromOptions(initialOptions);
+var initialOptions = mergeSecrets(
+  parseJsonOptions() || {},
+  parseSecrets($("#node-config-input-secrets").val())
+);
+populateFormFromOptions(initialOptions);
 ```
 
 - [ ] **Step 5: Extract secrets on save**
 
 Find:
+
 ```javascript
-            if (type === "json" && this.redisConfigOptionsEditor) {
-                var editorVal = this.redisConfigOptionsEditor.getValue();
-                try {
-                    JSON.parse(editorVal);
-                    $("#node-config-input-options").val(editorVal);
-                } catch (e) {
-                    // Non-JSON editor content (e.g. AWS dnsLookup appended) -
-                    // keep the hidden field value set by syncConnectionToEditor
-                }
-            } else if (type !== "json") {
-                $("#node-config-input-options").val($("#redis-config-options-raw").val());
-            }
+if (type === "json" && this.redisConfigOptionsEditor) {
+  var editorVal = this.redisConfigOptionsEditor.getValue();
+  try {
+    JSON.parse(editorVal);
+    $("#node-config-input-options").val(editorVal);
+  } catch (e) {
+    // Non-JSON editor content (e.g. AWS dnsLookup appended) -
+    // keep the hidden field value set by syncConnectionToEditor
+  }
+} else if (type !== "json") {
+  $("#node-config-input-options").val($("#redis-config-options-raw").val());
+}
 ```
+
 Replace with:
+
 ```javascript
-            if (type === "json" && this.redisConfigOptionsEditor) {
-                var editorVal = this.redisConfigOptionsEditor.getValue();
-                var parsed = null;
-                try {
-                    parsed = JSON.parse(editorVal);
-                } catch (e) {
-                    // Non-JSON editor content (e.g. AWS dnsLookup appended) -
-                    // fall back to the hidden field kept in sync by syncConnectionToEditor
-                    try { parsed = JSON.parse($("#node-config-input-options").val()); } catch (e2) { parsed = null; }
-                }
-                if (parsed !== null && parsed !== undefined) {
-                    var result = extractSecrets(parsed);
-                    $("#node-config-input-options").val(JSON.stringify(result.stripped));
-                    $("#node-config-input-secrets").val(
-                        Object.keys(result.secrets).length ? JSON.stringify(result.secrets) : ""
-                    );
-                }
-            } else if (type !== "json") {
-                $("#node-config-input-options").val($("#redis-config-options-raw").val());
-                $("#node-config-input-secrets").val("");
-            }
+if (type === "json" && this.redisConfigOptionsEditor) {
+  var editorVal = this.redisConfigOptionsEditor.getValue();
+  var parsed = null;
+  try {
+    parsed = JSON.parse(editorVal);
+  } catch (e) {
+    // Non-JSON editor content (e.g. AWS dnsLookup appended) -
+    // fall back to the hidden field kept in sync by syncConnectionToEditor
+    try {
+      parsed = JSON.parse($("#node-config-input-options").val());
+    } catch (e2) {
+      parsed = null;
+    }
+  }
+  if (parsed !== null && parsed !== undefined) {
+    var result = extractSecrets(parsed);
+    $("#node-config-input-options").val(JSON.stringify(result.stripped));
+    $("#node-config-input-secrets").val(
+      Object.keys(result.secrets).length ? JSON.stringify(result.secrets) : ""
+    );
+  }
+} else if (type !== "json") {
+  $("#node-config-input-options").val($("#redis-config-options-raw").val());
+  $("#node-config-input-secrets").val("");
+}
 ```
 
 - [ ] **Step 6: Add a help paragraph**
 
 Find:
+
 ```html
-<p>The connection can target a standalone Redis server, Redis Cluster, AWS
-MemoryDB/ElastiCache cluster endpoint, or Redis Sentinel.</p>
+<p>
+  The connection can target a standalone Redis server, Redis Cluster, AWS MemoryDB/ElastiCache
+  cluster endpoint, or Redis Sentinel.
+</p>
 ```
+
 Replace with:
+
 ```html
-<p>The connection can target a standalone Redis server, Redis Cluster, AWS
-MemoryDB/ElastiCache cluster endpoint, or Redis Sentinel.</p>
-<p><b>Secret storage:</b> in JSON mode, passwords are saved in Node-RED&rsquo;s encrypted
-credentials (not in the exported flow) and merged into the connection at runtime. With the
-<b>Environment variable</b> type, the secret stays in the environment and is never written to
-the flow.</p>
+<p>
+  The connection can target a standalone Redis server, Redis Cluster, AWS MemoryDB/ElastiCache
+  cluster endpoint, or Redis Sentinel.
+</p>
+<p>
+  <b>Secret storage:</b> in JSON mode, passwords are saved in Node-RED&rsquo;s encrypted credentials
+  (not in the exported flow) and merged into the connection at runtime. With the
+  <b>Environment variable</b> type, the secret stays in the environment and is never written to the
+  flow.
+</p>
 ```
 
 ---
@@ -472,6 +547,7 @@ the flow.</p>
 ## Task 4: Editor verification (Playwright)
 
 **Files:**
+
 - Modify: `test/playwright/redis-editor.spec.js` (add one test inside the `test.describe("Node-RED Redis editor", ...)` block)
 
 - [ ] **Step 1: Add a credential round-trip test**
@@ -479,36 +555,36 @@ the flow.</p>
 Add this test inside the `test.describe` block (after the existing `redis-config edits ...` test):
 
 ```javascript
-  test("redis-config stores the password as a credential, not in the flow", async ({ page }) => {
-    await openRedisConfig(page);
-    await page.locator("#red-ui-tab-redis-config-tab-connection").click();
-    await setSelectValue(page, "#redis-config-mode", "single");
-    await setInputValue(page, "#redis-config-single-host", "127.0.0.1");
-    await setInputValue(page, "#redis-config-single-port", "6379");
-    await setInputValue(page, "#redis-config-single-username", "default");
-    await setInputValue(page, "#redis-config-single-password", "super-secret-pw");
-    await saveConfigDialog(page);
-    await deploy(page);
+test("redis-config stores the password as a credential, not in the flow", async ({ page }) => {
+  await openRedisConfig(page);
+  await page.locator("#red-ui-tab-redis-config-tab-connection").click();
+  await setSelectValue(page, "#redis-config-mode", "single");
+  await setInputValue(page, "#redis-config-single-host", "127.0.0.1");
+  await setInputValue(page, "#redis-config-single-port", "6379");
+  await setInputValue(page, "#redis-config-single-username", "default");
+  await setInputValue(page, "#redis-config-single-password", "super-secret-pw");
+  await saveConfigDialog(page);
+  await deploy(page);
 
-    // The persisted flow must not contain the password anywhere.
-    const flows = await (await page.request.get("flows")).text();
-    expect(flows).not.toContain("super-secret-pw");
+  // The persisted flow must not contain the password anywhere.
+  const flows = await (await page.request.get("flows")).text();
+  expect(flows).not.toContain("super-secret-pw");
 
-    // The credential exists for the config node.
-    const flowsJson = JSON.parse(flows);
-    const configNode = flowsJson.flows
-      ? flowsJson.flows.find((n) => n.type === "redis-config")
-      : flowsJson.find((n) => n.type === "redis-config");
-    expect(configNode).toBeTruthy();
-    const cred = await (await page.request.get(`credentials/redis-config/${configNode.id}`)).json();
-    expect(JSON.stringify(cred)).toContain("super-secret-pw");
+  // The credential exists for the config node.
+  const flowsJson = JSON.parse(flows);
+  const configNode = flowsJson.flows
+    ? flowsJson.flows.find((n) => n.type === "redis-config")
+    : flowsJson.find((n) => n.type === "redis-config");
+  expect(configNode).toBeTruthy();
+  const cred = await (await page.request.get(`credentials/redis-config/${configNode.id}`)).json();
+  expect(JSON.stringify(cred)).toContain("super-secret-pw");
 
-    // Reopen and confirm the password round-trips into the form.
-    await openRedisConfig(page);
-    await page.locator("#red-ui-tab-redis-config-tab-connection").click();
-    await expect(page.locator("#redis-config-single-password")).toHaveValue("super-secret-pw");
-    await saveConfigDialog(page);
-  });
+  // Reopen and confirm the password round-trips into the form.
+  await openRedisConfig(page);
+  await page.locator("#red-ui-tab-redis-config-tab-connection").click();
+  await expect(page.locator("#redis-config-single-password")).toHaveValue("super-secret-pw");
+  await saveConfigDialog(page);
+});
 ```
 
 > Note: confirm `openRedisConfig`/`deploy` are exported by `test/playwright/helpers/node-red-editor.js` and imported at the top of the spec (the existing tests already use `saveConfigDialog`, `setSelectValue`, `setInputValue`); add `openRedisConfig` and `deploy` to the import if missing. The `/flows` and `/credentials` admin endpoints are unauthenticated in the test harness (`writeSettings` sets no `adminAuth`).
@@ -516,9 +592,11 @@ Add this test inside the `test.describe` block (after the existing `redis-config
 - [ ] **Step 2: Run the Playwright editor suite**
 
 Run:
+
 ```bash
 npm run test:playwright
 ```
+
 Expected: all editor tests pass, including the new credential test. (This starts its own Docker deployment; it does not use the dev Redis from Task 0.)
 
 ---
@@ -526,15 +604,19 @@ Expected: all editor tests pass, including the new credential test. (This starts
 ## Task 5: Docs
 
 **Files:**
+
 - Modify: `docs/NODE_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/REFERENCE_MAP.md`, `docs/TESTING.md`, `.claude/skills/node-red-contrib-redis-maintainer/SKILL.md`
 
 - [ ] **Step 1: `docs/NODE_GUIDE.md` — secret storage note**
 
 Find:
+
 ```markdown
 - never commit cloud Redis endpoints or credentials in tests, examples, or docs
 ```
+
 Replace with:
+
 ```markdown
 - never commit cloud Redis endpoints or credentials in tests, examples, or docs
 
@@ -552,11 +634,14 @@ Secret storage:
 - [ ] **Step 2: `docs/ARCHITECTURE.md` — redis-config summary**
 
 Find:
+
 ```markdown
 Stores Redis connection options and cluster mode.
 Options can come from typedInput values and are evaluated in runtime code.
 ```
+
 Replace with:
+
 ```markdown
 Stores Redis connection options and cluster mode.
 Options can come from typedInput values and are evaluated in runtime code.
@@ -569,10 +654,13 @@ In JSON mode, passwords are kept in a `text`-type `secrets` credential (encrypte
 - [ ] **Step 3: `docs/REFERENCE_MAP.md` — spec list**
 
 Find:
+
 ```markdown
 - `../test/redis_lua_ui_spec.js` — Lua editor/library UI (static HTML parse, no Redis needed)
 ```
+
 Replace with:
+
 ```markdown
 - `../test/redis_lua_ui_spec.js` — Lua editor/library UI (static HTML parse, no Redis needed)
 - `../test/redis_credentials_spec.js` — `redis-config` secret merge from the `secrets` credential (single/cluster/sentinel/legacy/env) plus guarded end-to-end auth
@@ -581,10 +669,13 @@ Replace with:
 - [ ] **Step 4: `docs/TESTING.md` — spec list**
 
 Find:
+
 ```markdown
 - `redis_lua_ui_spec.js` — Lua editor/library UI; static HTML parse, needs no Redis
 ```
+
 Replace with:
+
 ```markdown
 - `redis_lua_ui_spec.js` — Lua editor/library UI; static HTML parse, needs no Redis
 - `redis_credentials_spec.js` — `redis-config` secret merge from the `secrets` credential; constructor-only (no Redis) plus a guarded end-to-end auth case in the auth stage
@@ -593,21 +684,28 @@ Replace with:
 - [ ] **Step 5: maintainer skill — spec count + list**
 
 In `.claude/skills/node-red-contrib-redis-maintainer/SKILL.md`, find:
+
 ```markdown
 Mocha tests (21 spec files — `ls test/*_spec.js` for the live list):
 ```
+
 Replace with:
+
 ```markdown
 Mocha tests (22 spec files — `ls test/*_spec.js` for the live list):
 ```
+
 Then find:
+
 ```markdown
-  `test/redis_lua_conn_spec.js`, `test/redis_lua_ui_spec.js` (static HTML parse, no Redis needed)
+`test/redis_lua_conn_spec.js`, `test/redis_lua_ui_spec.js` (static HTML parse, no Redis needed)
 ```
+
 Replace with:
+
 ```markdown
-  `test/redis_lua_conn_spec.js`, `test/redis_lua_ui_spec.js` (static HTML parse, no Redis needed),
-  `test/redis_credentials_spec.js` (secret merge from the `secrets` credential)
+`test/redis_lua_conn_spec.js`, `test/redis_lua_ui_spec.js` (static HTML parse, no Redis needed),
+`test/redis_credentials_spec.js` (secret merge from the `secrets` credential)
 ```
 
 ---
@@ -619,6 +717,7 @@ Replace with:
 ```bash
 sudo -n docker stop redis-dev
 ```
+
 Expected: prints `redis-dev`.
 
 - [ ] **Step 2: Stage the runtime, editor, test, and docs (NOT .gitignore) and commit**
@@ -638,6 +737,7 @@ and a Playwright credential round-trip test; docs updated.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
+
 Expected: the pre-commit hook runs the full `npm test` matrix; standalone stages now include `redis_credentials_spec.js` (constructor merge tests pass everywhere; the end-to-end auth test runs in single-auth). All stages green; commit completes.
 
 - [ ] **Step 3 (optional): MemoryDB + Playwright**

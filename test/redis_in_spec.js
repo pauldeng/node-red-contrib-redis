@@ -343,6 +343,87 @@ describe("redis-in node", function () {
     );
   });
 
+  // ── subscribe/psubscribe failure surfacing ─────────────────────────────
+
+  // SUBSCRIBE/PSUBSCRIBE can be refused at subscribe time while the socket itself stays
+  // healthy — an ACL user without pubsub access is the reachable case. The failure must be
+  // reported rather than leaving the node green and permanently silent.
+  const NOSUB_USER = "nrcr_nosub";
+  const NOSUB_PASS = "nosub-pass";
+
+  async function withAclUserDeniedPubsub(run) {
+    const admin = direct();
+    await admin.acl(
+      "SETUSER",
+      NOSUB_USER,
+      "on",
+      ">" + NOSUB_PASS,
+      "~*",
+      "&*",
+      "+@all",
+      "-subscribe",
+      "-psubscribe"
+    );
+    admin.disconnect();
+    try {
+      await run();
+    } finally {
+      const cleanup = direct();
+      await cleanup.acl("DELUSER", NOSUB_USER);
+      cleanup.disconnect();
+    }
+  }
+
+  function deniedPubsubFlow(command, topic) {
+    return [
+      redisConfigNode("config-nosub", "NoSub", {
+        username: NOSUB_USER,
+        password: NOSUB_PASS,
+      }),
+      {
+        id: "in",
+        type: "redis-in",
+        server: "config-nosub",
+        command,
+        topic,
+        obj: false,
+        timeout: 0,
+        groupname: "",
+        consumername: "",
+        wires: [["h"]],
+      },
+      { id: "h", type: "helper" },
+    ];
+  }
+
+  it("subscribe — reports a refused SUBSCRIBE instead of reporting connected", async function () {
+    await withAclUserDeniedPubsub(async function () {
+      await helper.load(redisNode, deniedPubsubFlow("subscribe", "test:in:subscribe:denied"));
+      const node = helper.getNode("in");
+      const reported = new Promise((resolve) => {
+        node.on("call:error", (call) => resolve(String(call.args[0])));
+      });
+      const red = waitForStatus(node, (status) => status.fill === "red");
+
+      (await reported).should.match(/NOPERM/i);
+      (await red).text.should.match(/subscribe/i);
+    });
+  });
+
+  it("psubscribe — reports a refused PSUBSCRIBE instead of reporting connected", async function () {
+    await withAclUserDeniedPubsub(async function () {
+      await helper.load(redisNode, deniedPubsubFlow("psubscribe", "test:in:psdenied:*"));
+      const node = helper.getNode("in");
+      const reported = new Promise((resolve) => {
+        node.on("call:error", (call) => resolve(String(call.args[0])));
+      });
+      const red = waitForStatus(node, (status) => status.fill === "red");
+
+      (await reported).should.match(/NOPERM/i);
+      (await red).text.should.match(/subscribe/i);
+    });
+  });
+
   it("psubscribe — receives messages from multiple matching channels", function (done) {
     helper.load(
       redisNode,
@@ -515,6 +596,35 @@ describe("redis-in node", function () {
 
     inNode.error.callCount.should.be.above(0);
     String(inNode.error.firstCall.args[0]).should.match(/stream-key.*:.*id|Topic/i);
+  });
+
+  it("xreadgroup — warns with XGROUP CREATE guidance when the consumer group is missing", async function () {
+    // docs/TROUBLESHOOTING.md tells users to look for this warning, so its text is part of
+    // the node's contract rather than an incidental log line.
+    const STREAM = "test:in:xrg:nogroup";
+    const c = direct();
+    await c.del(STREAM);
+    await c.xadd(STREAM, "*", "field", "value");
+    c.disconnect();
+
+    await helper.load(
+      redisNode,
+      makeInFlow("xreadgroup", `${STREAM}:>`, true, {
+        timeout: 0,
+        groupname: "grp-missing",
+        consumername: "consumer-1",
+      })
+    );
+    const inNode = helper.getNode("in");
+    const warned = new Promise((resolve) =>
+      inNode.once("call:warn", (call) => resolve(String(call.args[0])))
+    );
+    const retrying = waitForStatus(inNode, (status) => status.text === "retrying");
+
+    const warning = await warned;
+    warning.should.match(/grp-missing/);
+    warning.should.match(/XGROUP CREATE/);
+    (await retrying).fill.should.equal("yellow");
   });
 
   // ── bzpopmin ───────────────────────────────────────────────────────────

@@ -81,9 +81,15 @@ function blockingBackoffDelay(attempt) {
 // redeploy does not wait out the delay or fire a retry on a torn-down client.
 function blockingSleep(ms, node) {
   return new Promise(function (resolve) {
-    var done = function () { node._blockingRetryCancel = null; resolve(); };
+    var done = function () {
+      node._blockingRetryCancel = null;
+      resolve();
+    };
     var timer = setTimeout(done, ms);
-    node._blockingRetryCancel = function () { clearTimeout(timer); done(); };
+    node._blockingRetryCancel = function () {
+      clearTimeout(timer);
+      done();
+    };
   });
 }
 ```
@@ -119,7 +125,9 @@ Add, before/around the existing `running = false` + forced disconnect, a cancel 
 backoff so the sleeping loop wakes immediately and exits on the `while (running)` check:
 
 ```js
-if (node._blockingRetryCancel) { node._blockingRetryCancel(); }
+if (node._blockingRetryCancel) {
+  node._blockingRetryCancel();
+}
 ```
 
 ## Invariants preserved

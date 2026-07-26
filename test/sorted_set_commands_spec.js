@@ -1404,11 +1404,7 @@ describe("Sorted Set commands", function () {
           msg.payload.should.be.an.Array();
           msg.payload.length.should.equal(4);
           delNode.receive({
-            payload: [
-              "test:zset:zus1",
-              "test:zset:zus2",
-              "test:zset:zusdst",
-            ],
+            payload: ["test:zset:zus1", "test:zset:zus2", "test:zset:zusdst"],
           });
         } catch (err) {
           done(err);
@@ -1648,11 +1644,7 @@ describe("Sorted Set commands", function () {
           msg.payload.should.be.an.Array();
           msg.payload.should.containEql("a");
           delNode.receive({
-            payload: [
-              "test:zset:zds1",
-              "test:zset:zds2",
-              "test:zset:zdsdst",
-            ],
+            payload: ["test:zset:zds1", "test:zset:zds2", "test:zset:zdsdst"],
           });
         } catch (err) {
           done(err);

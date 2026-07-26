@@ -159,7 +159,9 @@ async function runClusterProneSuccessCases(helper, options) {
   const luaA = key(prefix, tag, "lua-a");
   const luaB = key(prefix, tag, "lua-b");
 
-  (await step("MSET", () => invoke(helper, "mset", { payload: [k1, "1", k2, "2", k3, "3"] }))).should.equal("OK");
+  (
+    await step("MSET", () => invoke(helper, "mset", { payload: [k1, "1", k2, "2", k3, "3"] }))
+  ).should.equal("OK");
   (await step("MGET", () => invoke(helper, "mget", { payload: [k1, k2, k3] }))).should.eql([
     "1",
     "2",
@@ -230,7 +232,9 @@ async function runClusterProneSuccessCases(helper, options) {
   (await invoke(helper, "blpop", { payload: [listA, listB, "1"] })).should.eql([listA, "a-left"]);
   (await invoke(helper, "brpop", { payload: [listA, listB, "1"] })).should.eql([listB, "b-left"]);
   await invoke(helper, "lpush", { topic: listA, payload: "a-lmpop" });
-  const lmpop = await invoke(helper, "lmpop", { payload: ["2", listA, listB, "LEFT", "COUNT", "1"] });
+  const lmpop = await invoke(helper, "lmpop", {
+    payload: ["2", listA, listB, "LEFT", "COUNT", "1"],
+  });
   lmpop.should.be.an.Array();
   lmpop[0].should.equal(listA);
   await invoke(helper, "lpush", { topic: listA, payload: "a-blmpop" });
@@ -253,7 +257,9 @@ async function runClusterProneSuccessCases(helper, options) {
     "1",
   ]);
   await invoke(helper, "zadd", { topic: zpopA, payload: ["1", "za2"] });
-  const zmpop = await invoke(helper, "zmpop", { payload: ["2", zpopA, zpopB, "MIN", "COUNT", "1"] });
+  const zmpop = await invoke(helper, "zmpop", {
+    payload: ["2", zpopA, zpopB, "MIN", "COUNT", "1"],
+  });
   zmpop.should.be.an.Array();
   zmpop[0].should.equal(zpopA);
   await invoke(helper, "zadd", { topic: zpopA, payload: ["1", "za3"] });
@@ -286,7 +292,9 @@ async function runClusterProneSuccessCases(helper, options) {
   }
 
   (await invoke(helper, "keys", { payload: `${prefix}:*` })).should.be.an.Array();
-  const scan = await invoke(helper, "scan", { payload: ["0", "MATCH", `${prefix}:*`, "COUNT", "10"] });
+  const scan = await invoke(helper, "scan", {
+    payload: ["0", "MATCH", `${prefix}:*`, "COUNT", "10"],
+  });
   scan.should.be.an.Array();
   scan.length.should.equal(2);
   (await invoke(helper, "dbsize")).should.be.a.Number();

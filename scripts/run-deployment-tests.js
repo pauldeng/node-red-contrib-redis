@@ -180,13 +180,15 @@ async function waitForSentinel() {
   const deadline = Date.now() + 45000;
   let lastError;
   while (Date.now() < deadline) {
-    const sentinel = quietRedis(new Redis({
-      host: "127.0.0.1",
-      port: 26379,
-      connectTimeout: 500,
-      maxRetriesPerRequest: 1,
-      retryStrategy: null,
-    }));
+    const sentinel = quietRedis(
+      new Redis({
+        host: "127.0.0.1",
+        port: 26379,
+        connectTimeout: 500,
+        maxRetriesPerRequest: 1,
+        retryStrategy: null,
+      })
+    );
     try {
       const master = await sentinel.call("SENTINEL", "get-master-addr-by-name", "mymaster");
       if (Array.isArray(master) && master.length === 2) {

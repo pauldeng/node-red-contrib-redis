@@ -31,18 +31,22 @@
 - [ ] **Step 1: Start standalone Redis matching the test default**
 
 Run:
+
 ```bash
 sudo -n docker run -d --rm --name redis-dev -p 127.0.0.1:6379:6379 \
   redis:8.8-alpine redis-server --save "" --appendonly no
 ```
+
 Expected: prints a container id.
 
 - [ ] **Step 2: Confirm it answers**
 
 Run:
+
 ```bash
 sudo -n docker exec redis-dev redis-cli ping
 ```
+
 Expected: `PONG`
 
 > This dev Redis occupies port 6379. Stop it (Task 4, Step 1) before any commit that triggers the husky hook — `npm test` starts its own Redis on 6379.
@@ -52,15 +56,19 @@ Expected: `PONG`
 ## Task 1: RED — add recovery tests
 
 **Files:**
+
 - Modify: `test/redis_in_spec.js` (add ioredis import; append three tests before the final `});` of the `describe` block)
 
 - [ ] **Step 1: Add the ioredis import**
 
 Find (top of file):
+
 ```javascript
 const { directRedis, redisConfigNode } = require("./helpers/deployment");
 ```
+
 Replace with:
+
 ```javascript
 const { directRedis, redisConfigNode } = require("./helpers/deployment");
 const Redis = require("ioredis");
@@ -69,13 +77,16 @@ const Redis = require("ioredis");
 - [ ] **Step 2: Append the three tests**
 
 Find the end of the last existing test and the `describe` close:
+
 ```javascript
             setTimeout(() => c.zadd("test:in:bzpopmax:float", 3.14, "pi-task"), 150);
         });
     });
 });
 ```
+
 Replace with:
+
 ```javascript
             setTimeout(() => c.zadd("test:in:bzpopmax:float", 3.14, "pi-task"), 150);
         });
@@ -184,9 +195,11 @@ Replace with:
 - [ ] **Step 3: Run the recovery tests and verify they FAIL**
 
 Run:
+
 ```bash
 npm run test:mocha -- test/redis_in_spec.js --grep "transient connection error"
 ```
+
 Expected: 2 failing, each `no message received — ... did not recover` (~4s each). Today the loop sets `running=false` after the first rejection, so it never retries.
 
 (The "stops cleanly" test passes today too — it's a regression guard for the new cancel path, added in the same commit.)
@@ -209,51 +222,64 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 2: GREEN — add backoff helpers and make the loops retry
 
 **Files:**
+
 - Modify: `redis.js` (helpers near line 8; close handler at 428-438; xreadgroup loop 479-521; generic loop 523-557)
 
 - [ ] **Step 1: Add the backoff helpers after the existing constants**
 
 Find:
+
 ```javascript
-  const GRACEFUL_QUIT_TIMEOUT_MS = 2000;
-  const TEST_CONNECTION_TIMEOUT_MS = 10000;
+const GRACEFUL_QUIT_TIMEOUT_MS = 2000;
+const TEST_CONNECTION_TIMEOUT_MS = 10000;
 ```
+
 Replace with:
+
 ```javascript
-  const GRACEFUL_QUIT_TIMEOUT_MS = 2000;
-  const TEST_CONNECTION_TIMEOUT_MS = 10000;
-  const BLOCKING_RETRY_BASE_MS = 250;
-  const BLOCKING_RETRY_CAP_MS = 5000;
+const GRACEFUL_QUIT_TIMEOUT_MS = 2000;
+const TEST_CONNECTION_TIMEOUT_MS = 10000;
+const BLOCKING_RETRY_BASE_MS = 250;
+const BLOCKING_RETRY_CAP_MS = 5000;
 
-  // Equal-jitter capped exponential backoff for supervised blocking-input loops.
-  // Never returns 0, so an immediately-rejecting command cannot become a busy loop.
-  function blockingBackoffDelay(attempt) {
-    const ceil = Math.min(BLOCKING_RETRY_CAP_MS, BLOCKING_RETRY_BASE_MS * Math.pow(2, attempt));
-    const half = ceil / 2;
-    return Math.floor(half + Math.random() * half);
-  }
+// Equal-jitter capped exponential backoff for supervised blocking-input loops.
+// Never returns 0, so an immediately-rejecting command cannot become a busy loop.
+function blockingBackoffDelay(attempt) {
+  const ceil = Math.min(BLOCKING_RETRY_CAP_MS, BLOCKING_RETRY_BASE_MS * Math.pow(2, attempt));
+  const half = ceil / 2;
+  return Math.floor(half + Math.random() * half);
+}
 
-  // Interruptible backoff sleep. Stores a canceller on the node so the close
-  // handler can wake a pending retry immediately on redeploy/shutdown.
-  function blockingSleep(ms, node) {
-    return new Promise(function (resolve) {
-      var finish = function () { node._blockingRetryCancel = null; resolve(); };
-      var timer = setTimeout(finish, ms);
-      node._blockingRetryCancel = function () { clearTimeout(timer); finish(); };
-    });
-  }
+// Interruptible backoff sleep. Stores a canceller on the node so the close
+// handler can wake a pending retry immediately on redeploy/shutdown.
+function blockingSleep(ms, node) {
+  return new Promise(function (resolve) {
+    var finish = function () {
+      node._blockingRetryCancel = null;
+      resolve();
+    };
+    var timer = setTimeout(finish, ms);
+    node._blockingRetryCancel = function () {
+      clearTimeout(timer);
+      finish();
+    };
+  });
+}
 ```
 
 - [ ] **Step 2: Cancel a pending backoff in the close handler**
 
 Find:
+
 ```javascript
     node.on("close", async (undeploy, done) => {
       removeListeners();
       node.status({});
       running = false;
 ```
+
 Replace with:
+
 ```javascript
     node.on("close", async (undeploy, done) => {
       removeListeners();
@@ -265,6 +291,7 @@ Replace with:
 - [ ] **Step 3: Add backoff retry to the xreadgroup loop**
 
 Find:
+
 ```javascript
         const [stream, lastid] = node.topic.split(':');
         (async () => {
@@ -273,7 +300,9 @@ Find:
                     const data = await client.xreadgroup('GROUP', node.groupname, node.consumername, 'BLOCK', 0, 'STREAMS', stream, lastid);
                     if (data) {
 ```
+
 Replace with:
+
 ```javascript
         const [stream, lastid] = node.topic.split(':');
         (async () => {
@@ -286,6 +315,7 @@ Replace with:
 ```
 
 Then find:
+
 ```javascript
                 } catch (err) {
                     if (!running) return;
@@ -298,7 +328,9 @@ Then find:
                     }
                 }
 ```
+
 Replace with:
+
 ```javascript
                 } catch (err) {
                     if (!running) return;
@@ -316,6 +348,7 @@ Replace with:
 - [ ] **Step 4: Add backoff retry to the generic blocking loop**
 
 Find:
+
 ```javascript
     else {
       (async () => {
@@ -324,7 +357,9 @@ Find:
             const data = await client[node.command](node.topic, Number(node.timeout));
             if (data !== null && data.length >= 2) {
 ```
+
 Replace with:
+
 ```javascript
     else {
       (async () => {
@@ -337,13 +372,16 @@ Replace with:
 ```
 
 Then find:
+
 ```javascript
           } catch (e) {
             node.log(e.message);
             running = false;
           }
 ```
+
 Replace with:
+
 ```javascript
           } catch (e) {
             if (!running) break;
@@ -357,25 +395,31 @@ Replace with:
 - [ ] **Step 5: Run the recovery tests and verify they PASS**
 
 Run:
+
 ```bash
 npm run test:mocha -- test/redis_in_spec.js --grep "transient connection error"
 ```
+
 Expected: `2 passing`.
 
 - [ ] **Step 6: Run the full redis-in spec to confirm no regression**
 
 Run:
+
 ```bash
 npm run test:mocha -- test/redis_in_spec.js
 ```
+
 Expected: all redis-in tests pass, including the three new ones.
 
 - [ ] **Step 7: Run the status spec (blocking status unaffected)**
 
 Run:
+
 ```bash
 npm run test:mocha -- test/redis_status_spec.js
 ```
+
 Expected: all pass, including "blpop — shows red/error status when Redis is unreachable" (the client error event still drives red while the loop retries underneath).
 
 (No commit yet — the docs change ships with the fix in Task 4.)
@@ -385,6 +429,7 @@ Expected: all pass, including "blpop — shows red/error status when Redis is un
 ## Task 3: Docs — keep help and project docs in sync
 
 **Files:**
+
 - Modify: `redis.html` (`data-help-name="redis-in"`)
 - Modify: `docs/NODE_GUIDE.md` (`## redis-in`)
 - Modify: `docs/ARCHITECTURE.md` (`### redis-in`)
@@ -392,40 +437,56 @@ Expected: all pass, including "blpop — shows red/error status when Redis is un
 - [ ] **Step 1: Update the XREADGROUP retry note in `redis.html`**
 
 Find:
+
 ```html
-<p>Reads new messages from a Redis Stream via a consumer group. Each message is delivered
-to exactly one consumer in the group, enabling parallel processing across multiple nodes.
-If the consumer group does not exist, the node retries automatically every 2 seconds
-while logging a warning &mdash; create the group with <code>XGROUP CREATE</code> first.</p>
+<p>
+  Reads new messages from a Redis Stream via a consumer group. Each message is delivered to exactly
+  one consumer in the group, enabling parallel processing across multiple nodes. If the consumer
+  group does not exist, the node retries automatically every 2 seconds while logging a warning
+  &mdash; create the group with <code>XGROUP CREATE</code> first.
+</p>
 ```
+
 Replace with:
+
 ```html
-<p>Reads new messages from a Redis Stream via a consumer group. Each message is delivered
-to exactly one consumer in the group, enabling parallel processing across multiple nodes.
-If the consumer group does not exist, the node retries automatically with capped backoff
-while logging a warning &mdash; create the group with <code>XGROUP CREATE</code> first.</p>
+<p>
+  Reads new messages from a Redis Stream via a consumer group. Each message is delivered to exactly
+  one consumer in the group, enabling parallel processing across multiple nodes. If the consumer
+  group does not exist, the node retries automatically with capped backoff while logging a warning
+  &mdash; create the group with <code>XGROUP CREATE</code> first.
+</p>
 ```
 
 - [ ] **Step 2: Add a recovery sentence to the redis-in help intro in `redis.html`**
 
 Find:
+
 ```html
-<p>Listens to Redis and emits a message for every value received. The node opens a
-dedicated connection that stays alive until the flow is stopped or redeployed.</p>
+<p>
+  Listens to Redis and emits a message for every value received. The node opens a dedicated
+  connection that stays alive until the flow is stopped or redeployed.
+</p>
 ```
+
 Replace with:
+
 ```html
-<p>Listens to Redis and emits a message for every value received. The node opens a
-dedicated connection that stays alive until the flow is stopped or redeployed.</p>
-<p>Blocking inputs (BLPOP/BRPOP/BZPOPMIN/BZPOPMAX/XREADGROUP) auto-recover: if a command
-fails or the connection drops, the node logs a warning, shows a <em>retrying</em> status,
-and retries with capped backoff. The consumer stops only when the flow is stopped or
-redeployed.</p>
+<p>
+  Listens to Redis and emits a message for every value received. The node opens a dedicated
+  connection that stays alive until the flow is stopped or redeployed.
+</p>
+<p>
+  Blocking inputs (BLPOP/BRPOP/BZPOPMIN/BZPOPMAX/XREADGROUP) auto-recover: if a command fails or the
+  connection drops, the node logs a warning, shows a <em>retrying</em> status, and retries with
+  capped backoff. The consumer stops only when the flow is stopped or redeployed.
+</p>
 ```
 
 - [ ] **Step 3: Add a "Recovery" block to `docs/NODE_GUIDE.md`**
 
 Find:
+
 ```markdown
 Shutdown rules:
 
@@ -433,7 +494,9 @@ Shutdown rules:
 - always clear status
 - force disconnect for blocking shutdown
 ```
+
 Replace with:
+
 ```markdown
 Recovery:
 
@@ -454,10 +517,13 @@ Shutdown rules:
 - [ ] **Step 4: Add one line to `docs/ARCHITECTURE.md`**
 
 Find:
+
 ```markdown
 It sends Node-RED messages from Redis events or blocking loops.
 ```
+
 Replace with:
+
 ```markdown
 It sends Node-RED messages from Redis events or blocking loops.
 
@@ -475,9 +541,11 @@ handled by ioredis re-subscription.
 - [ ] **Step 1: Stop the dev Redis so it does not clash with the test matrix**
 
 Run:
+
 ```bash
 sudo -n docker stop redis-dev
 ```
+
 Expected: prints `redis-dev`.
 
 - [ ] **Step 2: Stage the fix and docs, then commit (the husky hook runs the full `npm test` matrix as verification)**
@@ -495,6 +563,7 @@ Help text and docs updated to match.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
+
 Expected: the pre-commit hook runs `scripts/run-deployment-tests.js`; single-noauth, single-auth, cluster-auth, and sentinel-auth stages all pass (standalone stages now include the three new redis-in tests). The commit completes.
 
 ---

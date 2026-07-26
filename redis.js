@@ -554,6 +554,21 @@ module.exports = function (RED) {
       done();
     });
 
+    // SUBSCRIBE/PSUBSCRIBE can be refused while the socket itself stays healthy (an ACL
+    // user without pubsub access), so a discarded rejection leaves the node green and
+    // permanently silent. Report the failure and mark the node red instead.
+    const subscribeTopic = async function () {
+      try {
+        await client[node.command](node.topic);
+      } catch (err) {
+        if (!running) {
+          return;
+        }
+        node.error(err);
+        node.status({ fill: "red", shape: "ring", text: "subscribe failed" });
+      }
+    };
+
     if (node.command === "psubscribe") {
       client.on("pmessage", function (pattern, channel, message) {
         var payload = null;
@@ -573,7 +588,7 @@ module.exports = function (RED) {
           });
         }
       });
-      client[node.command](node.topic, (err, count) => {});
+      subscribeTopic();
     } else if (node.command === "subscribe") {
       client.on("message", function (channel, message) {
         var payload = null;
@@ -592,7 +607,7 @@ module.exports = function (RED) {
           });
         }
       });
-      client[node.command](node.topic, (err, count) => {});
+      subscribeTopic();
     } else if (node.command === "xreadgroup") {
       // Stream IDs (">", "$", "0", "123-0") can never contain a colon, so splitting at
       // the FINAL colon is an unambiguous, fully backward-compatible separator: it lets

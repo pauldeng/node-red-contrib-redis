@@ -8,7 +8,8 @@
     "redis.html",
     "icons",
     "examples",
-    "docs/assets/readme"
+    "docs/assets/readme",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "prepare": "husky",
@@ -27,6 +28,7 @@
     "node"
   ],
   "node-red": {
+    "version": ">=5.0.0",
     "nodes": {
       "redis": "redis.js"
     }
@@ -45,6 +47,9 @@
       "email": "chameleonbr@gmail.com"
     }
   ],
+  "engines": {
+    "node": ">=22.9"
+  },
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^17.1.0",

@@ -25,8 +25,12 @@ function loadWithCreds(flow, creds) {
 describe("redis-config credential secret merge", function () {
   this.timeout(8000);
 
-  beforeEach(function (done) { helper.startServer(done); });
-  afterEach(function (done) { helper.unload().then(() => helper.stopServer(done)); });
+  beforeEach(function (done) {
+    helper.startServer(done);
+  });
+  afterEach(function (done) {
+    helper.unload().then(() => helper.stopServer(done));
+  });
 
   it("merges the single-mode password from the secrets credential into options", async function () {
     await loadWithCreds([cfg({ host: "127.0.0.1", port: 6379 }, "json", false)], {
@@ -36,9 +40,21 @@ describe("redis-config credential secret merge", function () {
   });
 
   it("merges cluster per-node passwords by index", async function () {
-    await loadWithCreds([cfg([{ host: "h1", port: 7000 }, { host: "h2", port: 7001 }], "json", true)], {
-      cfg: { secrets: JSON.stringify({ nodes: ["a", "b"] }) },
-    });
+    await loadWithCreds(
+      [
+        cfg(
+          [
+            { host: "h1", port: 7000 },
+            { host: "h2", port: 7001 },
+          ],
+          "json",
+          true
+        ),
+      ],
+      {
+        cfg: { secrets: JSON.stringify({ nodes: ["a", "b"] }) },
+      }
+    );
     const opts = helper.getNode("cfg").options;
     opts[0].password.should.equal("a");
     opts[1].password.should.equal("b");
@@ -55,7 +71,10 @@ describe("redis-config credential secret merge", function () {
   });
 
   it("keeps a legacy password embedded in options when no credential is set", async function () {
-    await loadWithCreds([cfg({ host: "127.0.0.1", port: 6379, password: "legacy" }, "json", false)], {});
+    await loadWithCreds(
+      [cfg({ host: "127.0.0.1", port: 6379, password: "legacy" }, "json", false)],
+      {}
+    );
     helper.getNode("cfg").options.password.should.equal("legacy");
   });
 
@@ -72,9 +91,17 @@ describe("redis-config credential secret merge", function () {
   });
 
   it("authenticates using the password supplied via the secrets credential", async function () {
-    if (!process.env.REDIS_PASSWORD) { this.skip(); return; }
-    const opts = { host: process.env.REDIS_HOST || "127.0.0.1", port: Number(process.env.REDIS_PORT || 6379) };
-    if (process.env.REDIS_USERNAME) { opts.username = process.env.REDIS_USERNAME; }
+    if (!process.env.REDIS_PASSWORD) {
+      this.skip();
+      return;
+    }
+    const opts = {
+      host: process.env.REDIS_HOST || "127.0.0.1",
+      port: Number(process.env.REDIS_PORT || 6379),
+    };
+    if (process.env.REDIS_USERNAME) {
+      opts.username = process.env.REDIS_USERNAME;
+    }
     await loadWithCreds(
       [cfg(opts, "json", false), commandNode("getcred", "GET", "cfg"), helperNode("getcred")],
       { cfg: { secrets: JSON.stringify({ password: process.env.REDIS_PASSWORD }) } }

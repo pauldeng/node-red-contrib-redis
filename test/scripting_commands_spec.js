@@ -645,6 +645,125 @@ describe("Scripting commands", function () {
     }
   });
 
+  it("redis-lua-script (stored) does not fall back to EVAL when a script raises its own NOSCRIPT-like error", async function () {
+    // The NOSCRIPT check is anchored to the reply prefix so a user script whose own error
+    // merely contains the word cannot trigger the EVAL fallback, which would re-execute a
+    // non-idempotent script body.
+    const script = [
+      "redis.call('INCR', KEYS[1])",
+      "return redis.error_reply('script cache NOSCRIPT lookup failed')",
+    ].join("\n");
+    const seed = directRedis();
+    try {
+      await seed.del("test:script:anchored");
+      const flow = [
+        configNode,
+        {
+          id: "anchored-node",
+          type: "redis-lua-script",
+          server: "config1",
+          name: "anchored",
+          mode: "script",
+          readonly: false,
+          stored: true,
+          keyval: 1,
+          func: script,
+          block: false,
+          wires: [["anchored-helper"]],
+        },
+        { id: "anchored-helper", type: "helper" },
+      ];
+
+      await loadFlowAsync(flow);
+      const node = helper.getNode("anchored-node");
+      await waitForNodeProp(node, "sha1");
+
+      const errP = nextError(node);
+      node.receive({ payload: ["test:script:anchored"] });
+      String(await errP).should.match(/NOSCRIPT lookup failed/);
+
+      node.command.should.equal(
+        "evalsha",
+        "the node must stay on EVALSHA — switching to EVAL means the user error was " +
+          "misclassified as a missing script"
+      );
+      (await seed.get("test:script:anchored")).should.equal(
+        "1",
+        "script must run exactly once — a second INCR means the EVAL fallback re-executed it"
+      );
+    } finally {
+      seed.disconnect();
+    }
+  });
+
+  it("redis-lua-script coalesces concurrent library reloads into a single FUNCTION LOAD", async function () {
+    // Recovery is shared through `inflightLoad` so N messages that all hit a flushed
+    // library issue one FUNCTION LOAD between them, not one each.
+    const lib = [
+      "#!lua name=coalescelib",
+      "redis.register_function('coalescefn', function(keys, args) return redis.call('INCR', keys[1]) end)",
+    ].join("\n");
+    const seed = directRedis();
+    try {
+      await seed.function("flush");
+      await seed.del("test:script:coalesce");
+      const flow = [
+        configNode,
+        {
+          id: "coalesce-node",
+          type: "redis-lua-script",
+          server: "config1",
+          name: "coalesce",
+          mode: "function",
+          readonly: false,
+          keyval: 1,
+          func: lib,
+          fname: "coalescefn",
+          block: false,
+          wires: [["coalesce-helper"]],
+        },
+        { id: "coalesce-helper", type: "helper" },
+      ];
+
+      await loadFlowAsync(flow);
+      const node = helper.getNode("coalesce-node");
+      const sink = helper.getNode("coalesce-helper");
+      await waitForNodeProp(node, "libname");
+
+      // Drop the library out of band, then reset stats so only recovery loads are counted.
+      await seed.function("flush");
+      await seed.config("RESETSTAT");
+
+      const CONCURRENT = 5;
+      const seen = [];
+      const allDelivered = new Promise((resolve, reject) => {
+        sink.on("input", (msg) => {
+          seen.push(msg.payload);
+          if (seen.length === CONCURRENT) {
+            resolve();
+          }
+        });
+        node.once("call:error", (call) => reject(new Error(String(call.args[0]))));
+      });
+      for (let i = 0; i < CONCURRENT; i++) {
+        node.receive({ payload: ["test:script:coalesce"] });
+      }
+      await allDelivered;
+
+      seen.sort((a, b) => a - b).should.eql([1, 2, 3, 4, 5]);
+
+      const stats = await seed.info("commandstats");
+      const loadCalls = stats.match(/cmdstat_function\|load:calls=(\d+)/);
+      loadCalls.should.not.be.null();
+      Number(loadCalls[1]).should.equal(
+        1,
+        `${CONCURRENT} concurrent messages must share one FUNCTION LOAD`
+      );
+    } finally {
+      seed.disconnect();
+    }
+  });
+
   it("redis-lua-script errors in function mode when the library source is empty", async function () {
     const flow = [
       configNode,
