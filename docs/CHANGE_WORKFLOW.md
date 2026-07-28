@@ -72,6 +72,35 @@ npm test
 deployment yourself. Husky also runs `npm test` on pre-commit, so a failing deployment
 matrix or unavailable Docker will block your commit.
 
+## Releasing
+
+Publishing runs only in GitHub Actions, over npm trusted publishing (OIDC). There is no npm
+token in the repo or in Actions secrets, and no maintainer publishes from a workstation.
+
+One-time setup on npmjs.com (package → Settings → Trusted publishers → GitHub Actions):
+
+| Field             | Value                    |
+| ----------------- | ------------------------ |
+| Organization/user | `pauldeng`               |
+| Repository        | `node-red-contrib-redis` |
+| Workflow filename | `release.yml`            |
+| Environment       | leave empty              |
+
+Renaming `.github/workflows/release.yml` invalidates that config — update npmjs.com in the
+same change.
+
+Per release:
+
+1. Bump `version` in `package.json` and move the `CHANGELOG.md` unreleased entries under it.
+2. Merge to `main`.
+3. Create a GitHub Release tagged `v<version>` (the tag must match `package.json`, or the
+   workflow fails before publishing).
+
+`Release` then re-runs the full gate — Prettier, `npm audit --omit=dev`, `npm test`, the
+Playwright editor tests, `npm pack --dry-run` — and publishes with provenance. Confirm the
+result with `npm view @pauldeng/node-red-contrib-redis@<version> dist`: a CI publish has an
+`attestations` field, a workstation publish does not.
+
 ## Definition of Done
 
 A change is complete only when runtime, editor, help text, tests, examples, **and docs** agree.

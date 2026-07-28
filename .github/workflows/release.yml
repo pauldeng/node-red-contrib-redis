@@ -1,16 +1,14 @@
 name: Release
 
 on:
+  release:
+    types: [published]
+  # Escape hatch: publishes whatever version the selected ref carries.
   workflow_dispatch:
-    inputs:
-      version:
-        description: Version to publish
-        required: true
-        default: 2.0.0
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write # OIDC token for npm trusted publishing + provenance
 
 jobs:
   publish:
@@ -25,13 +23,16 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@latest
       - run: npm ci
-      - run: node -e "const pkg=require('./package.json'); if (pkg.version !== process.env.VERSION) throw new Error(pkg.version + ' !== ' + process.env.VERSION)"
+      - name: Verify package.json matches the release tag
+        if: github.event_name == 'release'
         env:
-          VERSION: ${{ inputs.version }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: node -e "const pkg=require('./package.json'); const tag=process.env.TAG.replace(/^v/,''); if (pkg.version !== tag) throw new Error(pkg.version + ' !== ' + tag)"
       - run: npx prettier --check .
       - run: npm audit --omit=dev
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:playwright
       - run: npm pack --dry-run
+      # Trusted publishing supplies the credential over OIDC — no npm token.
       - run: npm publish --access public --provenance
