@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - Unreleased
+## [2.0.0] - 2026-07-26
 
 First release since `1.4.0`. Read the **Breaking changes** section before upgrading: existing
 flows keep working, but several nodes now surface errors that previous versions discarded.

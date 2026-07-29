@@ -203,6 +203,9 @@ Read the matching code and tests before touching:
 - Lua Script vs Function mode, the read-only flag, and the cluster-aware FUNCTION LOAD/FCALL recovery
 - context storage in `redis-instance`
 - config option evaluation from typedInput / env / JSON / JSONata
+- never recreate a `master` branch — the Node-RED flow library rewrites relative `README.md`
+  paths against a hardcoded `master`, and those links only work because GitHub currently
+  redirects `master` to `main`. See **Branches** in `docs/CHANGE_WORKFLOW.md`.
 
 ## Output quality bar
 

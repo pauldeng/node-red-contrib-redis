@@ -72,6 +72,67 @@ npm test
 deployment yourself. Husky also runs `npm test` on pre-commit, so a failing deployment
 matrix or unavailable Docker will block your commit.
 
+## Branches
+
+`main` is the default branch and the only one that ships. Base work on `main` and merge back
+into `main`.
+
+### Upstream
+
+This package is a fork of `chameleonbr/node-red-contrib-redis`, which is still active and
+still uses `master` as its default branch. Track it with an `upstream` remote:
+
+```bash
+git remote add upstream https://github.com/chameleonbr/node-red-contrib-redis.git
+git fetch upstream
+git log --oneline upstream/master ^legacy-upstream-master   # what upstream has that we don't
+```
+
+The local `legacy-upstream-master` branch is configured to follow it — `branch.*.remote` is
+`upstream`, `branch.*.merge` is `refs/heads/master`, and `branch.*.pushRemote` is `origin` — so
+a fetch pulls from the original project while a push would target our fork.
+
+`origin/legacy-upstream-master` is deliberately frozen at `5865f2d`, the tip of the deleted
+`master`. It is a protected branch requiring an approving review, and with a single
+collaborator no self-approval is possible, so it cannot be fast-forwarded. That is fine: its
+job is preserving the pre-fork snapshot, and current upstream work is reachable through the
+`upstream` remote instead. Read upstream changes there and port them deliberately — never
+merge `upstream/master` into `main`, since the two trees diverged substantially (different
+tests, docs, packaging, and Node-RED/Node floors).
+
+### Never recreate `master`
+
+This is load-bearing, not housekeeping. `master` held the abandoned pre-fork upstream tree
+(v1.x: no `docs/`, no `examples/`, no test suite) and was deleted; that history is preserved
+at `legacy-upstream-master` and at `origin/legacy-upstream-master`. Never merge from it,
+cherry-pick from it, or treat it as current.
+
+The reason a new `master` must never exist: the Node-RED flow library
+(`node-red/flow-library`, `routes/nodes.js`) rewrites relative `<img src>` and `<a href>`
+values in a package README against a **hardcoded** `master` branch — it never asks GitHub for
+the repository's real default branch. npm's renderer uses `HEAD`, which resolves to `main`.
+That is why the README screenshots once rendered on npmjs.com and 404'd on flows.nodered.org:
+the rewritten `master` URLs landed in the v1.x tree, which has no `docs/assets/`.
+
+With `master` deleted, GitHub's legacy default-branch redirect for this repo resolves `master`
+to `main`, so the flow library's rewritten URLs now hit current content and `README.md` can
+keep using ordinary relative paths. Verified: `raw/master/...` and `raw/main/...` return
+byte-identical content, while a genuinely unknown ref 404s. Recreating a `master` branch would
+shadow that redirect and silently break every relative README link on flows.nodered.org —
+a surface invisible from a local checkout, from GitHub's own README view, and from npmjs.com.
+
+Two consequences worth knowing:
+
+- A README-only fix is not visible on flows.nodered.org until the next publish; the library
+  re-reads the README per released version.
+- The rewrite maps `.md` links to `blob/master/` and everything else to `raw/master/`, and
+  raw cannot serve a directory listing. So a relative link to a directory (for example
+  `[examples/](examples/)`) 404s on flows.nodered.org. Link to a file, or make that one link
+  absolute to `https://github.com/pauldeng/node-red-contrib-redis/tree/main/examples`.
+
+The flow library only re-reads the README when a new version is published, so a README-only
+fix is not visible on flows.nodered.org until the next release.
+
 ## Releasing
 
 Publishing runs only in GitHub Actions, over npm trusted publishing (OIDC). There is no npm
