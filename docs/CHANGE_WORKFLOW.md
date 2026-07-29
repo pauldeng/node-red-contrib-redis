@@ -92,6 +92,12 @@ The local `legacy-upstream-master` branch is configured to follow it — `branch
 `upstream`, `branch.*.merge` is `refs/heads/master`, and `branch.*.pushRemote` is `origin` — so
 a fetch pulls from the original project while a push would target our fork.
 
+Adding that remote changes what `gh` considers the base repository: with an `upstream` remote
+present it targets the fork parent, so `gh pr create` fails against `chameleonbr` with
+`No commits between ...` / `Base ref must be a branch`. Fix it once with
+`gh repo set-default pauldeng/node-red-contrib-redis`, or pass
+`--repo pauldeng/node-red-contrib-redis` per command.
+
 `origin/legacy-upstream-master` is deliberately frozen at `5865f2d`, the tip of the deleted
 `master`. It is a protected branch requiring an approving review, and with a single
 collaborator no self-approval is possible, so it cannot be fast-forwarded. That is fine: its
