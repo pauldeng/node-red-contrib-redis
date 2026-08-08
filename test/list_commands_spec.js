@@ -1,8 +1,10 @@
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
+const { isCommandSupported } = require("./helpers/capability");
 const { cleanupKeys } = require("./helpers/cleanup");
 const { directRedis, redisConfigNode } = require("./helpers/deployment");
 const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
+const { waitForBlockedCommand } = require("./helpers/wait");
 
 helper.init(require.resolve("node-red"));
 
@@ -1386,6 +1388,9 @@ describe("List commands", function () {
   // LMOVEM/BLMOVEM (Redis 8.10) move up to (COUNT) or exactly (EXACTLY) N elements
   // atomically, returned as a flat array in the requested ordering (OBO/BULK).
   it("LMOVEM moves multiple elements in order and drains an emptied source", async function () {
+    if (!(await isCommandSupported("LMOVEM"))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("rpush", "RPUSH"),
@@ -1420,6 +1425,9 @@ describe("List commands", function () {
   });
 
   it("LMOVEM distinguishes one-by-one from bulk ordering when moving on the same side", async function () {
+    if (!(await isCommandSupported("LMOVEM"))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("rpush", "RPUSH"),
@@ -1475,6 +1483,9 @@ describe("List commands", function () {
   });
 
   it("LMOVEM EXACTLY returns nil and leaves the source untouched when not enough elements exist", async function () {
+    if (!(await isCommandSupported("LMOVEM"))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("rpush", "RPUSH"),
@@ -1508,6 +1519,9 @@ describe("List commands", function () {
   });
 
   it("BLMOVEM moves multiple elements immediately when data is present", async function () {
+    if (!(await isCommandSupported("BLMOVEM"))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("rpush", "RPUSH"),
@@ -1543,6 +1557,9 @@ describe("List commands", function () {
 
   it("BLMOVEM resolves nil after its timeout when no data ever arrives", async function () {
     this.timeout(8000);
+    if (!(await isCommandSupported("BLMOVEM"))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
@@ -1571,6 +1588,9 @@ describe("List commands", function () {
 
   it("BLMOVEM (Block Commands) closes cleanly while still blocked on an empty source", async function () {
     this.timeout(10000);
+    if (!(await isCommandSupported("BLMOVEM"))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
@@ -1590,8 +1610,12 @@ describe("List commands", function () {
       ],
     });
 
-    // give the blocking command a moment to actually reach Redis before tearing down
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    const client = directRedis();
+    try {
+      await waitForBlockedCommand(client, "blmovem");
+    } finally {
+      client.disconnect();
+    }
     const started = Date.now();
     await helper.unload();
     (Date.now() - started).should.be.below(1000);

@@ -1,5 +1,6 @@
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
+const { isCommandSupported } = require("./helpers/capability");
 const { cleanupKeys } = require("./helpers/cleanup");
 const { redisConfigNode } = require("./helpers/deployment");
 const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
@@ -1231,6 +1232,9 @@ describe("Set commands", function () {
   // SUNIONCARD/SDIFFCARD (Redis 8.10): count-only siblings of SUNION/SDIFF, sharing
   // SINTERCARD's numkeys+LIMIT shape.
   it("SUNIONCARD returns the union size, optionally capped by LIMIT", async function () {
+    if (!(await isCommandSupported("SUNIONCARD"))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("sadd1", "SADD"),
@@ -1259,6 +1263,9 @@ describe("Set commands", function () {
   });
 
   it("SDIFFCARD returns the difference size, optionally capped by LIMIT", async function () {
+    if (!(await isCommandSupported("SDIFFCARD"))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("sadd1", "SADD"),

@@ -3,6 +3,7 @@ const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
 const { directRedis, redisConfigNode } = require("./helpers/deployment");
+const { waitForSubscription } = require("./helpers/wait");
 
 helper.init(require.resolve("node-red"));
 
@@ -10,6 +11,17 @@ const CONFIG = redisConfigNode("config1", "Local");
 
 function direct() {
   return directRedis();
+}
+
+function triggerWhenReady(ready, action, done) {
+  (async () => {
+    try {
+      await ready;
+      await action();
+    } catch (err) {
+      done(err);
+    }
+  })();
 }
 
 // redis-out declares zero outputs, so a written value never becomes an observable
@@ -355,7 +367,11 @@ describe("redis-out node", function () {
         }
       });
 
-      setTimeout(() => out.receive({ payload: "ping" }), 300);
+      triggerWhenReady(
+        waitForSubscription(c, "test:out:publish:ch"),
+        () => out.receive({ payload: "ping" }),
+        done
+      );
     });
   });
 
@@ -375,7 +391,11 @@ describe("redis-out node", function () {
         }
       });
 
-      setTimeout(() => out.receive({ payload: { hello: "world" } }), 300);
+      triggerWhenReady(
+        waitForSubscription(c, "test:out:publish:json"),
+        () => out.receive({ payload: { hello: "world" } }),
+        done
+      );
     });
   });
 
@@ -396,7 +416,11 @@ describe("redis-out node", function () {
         }
       });
 
-      setTimeout(() => out.receive({ topic: "test:out:publish:override", payload: "routed" }), 300);
+      triggerWhenReady(
+        waitForSubscription(c, "test:out:publish:override"),
+        () => out.receive({ topic: "test:out:publish:override", payload: "routed" }),
+        done
+      );
     });
   });
 

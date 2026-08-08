@@ -52,25 +52,31 @@ Mocha tests (`ls test/*_spec.js` for the live list — do not rely on a hard-cod
   `test/server_commands_spec.js`, `test/set_commands_spec.js`,
   `test/sorted_set_commands_spec.js`, `test/stream_commands_spec.js`,
   `test/string_commands_spec.js`, `test/redis_8_10_commands_spec.js` (representative
-  coverage for Array, Vector Sets, `INCREX`/`XNACK`, and the bundled JSON/Bloom/Cuckoo/
-  CMS/TopK/t-digest/Time Series modules, plus the safe `BACKUP HELP` path and the live
-  datalist-vs-`COMMAND LIST` completeness check; each case self-skips via `COMMAND INFO` when
-  unsupported), `test/ioredis_v6_characterization_spec.js` (pins the legacy, pre-v6 RESP2-
+  coverage for Array, Vector Sets, `INCREX`/`XNACK`, the bundled JSON/Bloom/Cuckoo/
+  CMS/TopK/t-digest/Time Series/Search modules, and a regression suite for three Redis 8.10
+  ACL/argument-validation fixes, plus the safe `BACKUP HELP` path and the live
+  datalist-vs-`COMMAND LIST` completeness check; each case self-skips via
+  `test/helpers/capability.js` when unsupported — including on Valkey, this project's other
+  tested engine), `test/ioredis_v6_characterization_spec.js` (pins the legacy, pre-v6 RESP2-
   equivalent reply shapes for `HRANDFIELD WITHVALUES`, `VSIM WITHSCORES`, `XREAD`,
   `XREADGROUP`, and the ten ioredis "sorted-set pair" commands sent in uppercase, verified
   against ioredis v6 + RESP3 with the `CASE_SENSITIVE_TRANSFORM_COMMANDS` dispatch-set
   extension in `redis.js`)
-- deployment topology: `test/redis_cluster_deployment_spec.js`,
-  `test/redis_sentinel_deployment_spec.js`, `test/memorydb_deployment_spec.js`
+- deployment topology: `test/redis_cluster_deployment_spec.js` and
+  `test/redis_sentinel_deployment_spec.js` (each reused verbatim for the matching
+  `valkey-*` deployment), `test/redis_unix_socket_deployment_spec.js` (the `single-unix`
+  deployment, TCP disabled), `test/memorydb_deployment_spec.js`
 - browser editor coverage: `test/playwright/redis-editor.spec.js` with helpers in
   `test/playwright/helpers/node-red-editor.js`
 
 Supporting files:
 
+- `test/helpers/capability.js`
 - `test/helpers/cleanup.js`
 - `test/helpers/cluster-prone.js`
 - `test/helpers/deployment.js`
 - `test/helpers/topology.js`
+- `scripts/deployment-runner.js`
 - `scripts/run-deployment-tests.js`
 - `scripts/run-playwright-tests.js`
 - `scripts/ensure-docker-ubuntu.sh`

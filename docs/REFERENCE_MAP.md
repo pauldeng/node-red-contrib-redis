@@ -11,7 +11,7 @@ For any task, start with the entry point for your agent:
 - Claude: `../CLAUDE.md` and
   `../.claude/skills/node-red-contrib-redis-maintainer/SKILL.md`
 
-`AGENTS.md` is a symlink to `CLAUDE.md`, so both agents read the same guidance.
+`AGENTS.md` is canonical and `CLAUDE.md` imports it, so both agents read the same guidance.
 
 Then read:
 
@@ -59,11 +59,12 @@ Command-family coverage (all drive `redis-command` via `client.call`):
 - `../test/string_commands_spec.js`
 - `../test/redis_8_10_commands_spec.js` — representative coverage (Array, Vector Sets,
   `INCREX`, `XNACK`, and the bundled `JSON`/`BF`/`CF`/`CMS`/`TOPK`/`TDIGEST`/`TS` modules) for
-  Redis data-type families with no existing family spec, plus the safe `BACKUP HELP` path and
-  the live `redis-command` datalist-vs-`COMMAND LIST` completeness check; each case self-skips
-  via `COMMAND INFO` when the connected Redis lacks that command. This is the primary,
-  current-feature target (`redis:8.10-alpine`); the minimum Redis/Valkey versions are a
-  separate RESP3 support floor, not alternate primary-matrix targets
+  Redis data-type families with no existing family spec, Search/JSONPath/Time Series
+  additions, a regression suite for three Redis 8.10 ACL/argument-validation fixes, plus the
+  safe `BACKUP HELP` path and the live `redis-command` datalist-vs-`COMMAND LIST`
+  completeness check; each case self-skips via `COMMAND INFO` (or a syntax probe, see
+  `test/helpers/capability.js`) when the connected server lacks that feature — including when
+  run against Valkey, which does not bundle Redis's modules or 8.10-era commands
 - `../test/ioredis_v6_characterization_spec.js` — pins the legacy (pre-v6, RESP2-equivalent)
   reply shapes for `HRANDFIELD WITHVALUES`, `VSIM WITHSCORES`, `XREAD`, `XREADGROUP`, and the
   ten ioredis "sorted-set pair" commands (`zdiff`/`zinter`/`zpopmax`/`zpopmin`/`zunion`/
@@ -73,8 +74,9 @@ Command-family coverage (all drive `redis-command` via `client.call`):
 
 Deployment topology coverage:
 
-- `../test/redis_cluster_deployment_spec.js` — Redis Cluster auth, same-slot/cross-slot behavior, pub/sub, blocking list, Lua fallback, same-slot FCALL + read-only Lua, Redis 7.2 cluster-prone commands
-- `../test/redis_sentinel_deployment_spec.js` — Sentinel discovery/auth, pub/sub, blocking list, Lua, FCALL + read-only Lua, failover/reconnect, Redis 7.2 cluster-prone commands
+- `../test/redis_cluster_deployment_spec.js` — Cluster auth, same-slot/cross-slot behavior, pub/sub, blocking list, Lua fallback, same-slot FCALL + read-only Lua, Redis 7.2 cluster-prone commands; reused verbatim for the `valkey-cluster-auth` deployment (`REDIS_DEPLOYMENT`-gated), with Redis-8.10-only cases self-skipping there
+- `../test/redis_sentinel_deployment_spec.js` — Sentinel discovery/auth, pub/sub, blocking list, Lua, FCALL + read-only Lua, failover/reconnect, Redis 7.2 cluster-prone commands; reused verbatim for `valkey-sentinel-auth`
+- `../test/redis_unix_socket_deployment_spec.js` — the `single-unix` deployment: `redis-config`'s connection-test endpoint and a `redis-command` round-trip over a Unix socket with TCP disabled
 - `../test/memorydb_deployment_spec.js` — opt-in AWS MemoryDB cluster/auth (JSON and env-var optionsType), same-slot/cross-slot, Lua, read-only Lua + FCALL (gated on engine function support), and Redis 7.2 cluster-prone command coverage
 
 Browser editor coverage:
@@ -86,6 +88,7 @@ Browser editor coverage:
 
 Helper:
 
+- `../test/helpers/capability.js` — `isCommandSupported`/`isCallSyntaxSupported` self-skip checks for Redis-8.10-only test cases
 - `../test/helpers/cleanup.js`
 - `../test/helpers/cluster-prone.js`
 - `../test/helpers/deployment.js`
@@ -95,6 +98,7 @@ Helper:
 Docker test deployments:
 
 - `../scripts/ensure-docker-ubuntu.sh`
+- `../scripts/deployment-runner.js` — shared Docker-deployment mechanics used by `npm test`
 - `../scripts/run-deployment-tests.js`
 - `../scripts/run-playwright-tests.js`
 - `../test/deployments/`
@@ -119,7 +123,7 @@ User-facing docs:
 
 Agent docs:
 
-- `../AGENTS.md` - symlink to `../CLAUDE.md` (shared agent guide)
+- `../AGENTS.md` - canonical shared agent guide (`CLAUDE.md` imports it)
 - `../.codex/skills/node-red-contrib-redis-maintainer/SKILL.md` - symlink to the shared maintainer skill text
 - `../CLAUDE.md`
 - `../.claude/skills/node-red-contrib-redis-maintainer/SKILL.md`

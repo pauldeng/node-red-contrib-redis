@@ -302,7 +302,10 @@ async function runClusterProneSuccessCases(helper, options) {
     (await invoke(helper, "select", { payload: "0" })).should.equal("OK");
   } else {
     const err = await expectError(helper, "select", { payload: "1" });
-    err.message.should.match(/SELECT|cluster|not allowed/i);
+    // Redis rejects a nonzero SELECT in cluster mode with "SELECT is not allowed in cluster
+    // mode"; Valkey rejects it as "DB index is out of range" (cluster mode fixes databases to
+    // 1 on both engines — same restriction, different wording).
+    err.message.should.match(/SELECT|cluster|not allowed|DB index/i);
   }
 }
 

@@ -409,6 +409,21 @@ describe("Redis 8.10 Search module additions (generic redis-command path)", func
     }
   }
 
+  // RediSearch indexes a freshly-HSET document asynchronously; a search issued immediately
+  // afterward can (rarely, under load) still see 0 results. Poll briefly instead of assuming
+  // immediate consistency.
+  async function searchUntil(index, query, minTotalResults, timeoutMs = 2000) {
+    const deadline = Date.now() + timeoutMs;
+    let result;
+    do {
+      result = await invoke(helper, "ftsearch", { payload: [index, query] });
+      if (result[result.indexOf("total_results") + 1] >= minTotalResults) {
+        return result;
+      }
+    } while (Date.now() < deadline);
+    return result;
+  }
+
   it("FT.ALIASLIST returns every alias currently pointing at an index", async function () {
     skipIfUnsupported.call(this);
     const index = "test:8_10:ft:alias:idx";
@@ -457,9 +472,9 @@ describe("Redis 8.10 Search module additions (generic redis-command path)", func
       });
       await invoke(helper, "hset", { topic: `${prefix}1`, payload: ["title", word] });
 
-      const result = await invoke(helper, "ftsearch", { payload: [index, query] });
       // ioredis's default legacy reply mapping flattens FT.SEARCH's RESP3 map reply to
       // [key, value, key, value, ...]; FT.SEARCH has no dedicated reply transformer.
+      const result = await searchUntil(index, query, 1);
       result[result.indexOf("total_results") + 1].should.equal(1);
       const results = result[result.indexOf("results") + 1];
       results[0][results[0].indexOf("id") + 1].should.equal(`${prefix}1`);
@@ -1025,6 +1040,179 @@ describe("Redis 8.10 Time Series additions (generic redis-command path)", functi
   });
 });
 
+// Redis 8.10 fixed three argument-validation/ACL bugs (see the official 8.10 release notes'
+// "Bug fixes compared to 8.8.0"): an ACL key-permission bypass on SORT/GEORADIUS/
+// GEORADIUSBYMEMBER/XREAD/XREADGROUP, SET silently accepting mutually exclusive NX/XX/IF*
+// options, and VADD ... CAS SETATTR recording the wrong attribute count. These tests protect
+// each fix at this package's boundary — the node must surface Redis's own stricter errors (or
+// corrected behavior) unchanged, never add client-side policy to work around them.
+describe("Redis 8.10 ACL and argument-validation regression fixes", function () {
+  this.timeout(8000);
+
+  const ACL_USER = "test_8_10_acl_restricted";
+  const ACL_PASSWORD = "test-8-10-acl-pass";
+  const ALLOWED_PREFIX = "test:8_10:acl:allowed:";
+  const FORBIDDEN_PREFIX = "test:8_10:acl:forbidden:";
+  const ACL_CONFIG = redisConfigNode("acl-config", "AclRestricted", {
+    username: ACL_USER,
+    password: ACL_PASSWORD,
+  });
+
+  let regressionSupported;
+
+  before(async function () {
+    await new Promise((resolve, reject) =>
+      helper.startServer((err) => (err ? reject(err) : resolve()))
+    );
+    const probe = directRedis();
+    try {
+      // VADD stands in for "this is Redis 8.10", the same signal the vector-set family test
+      // above uses; the ACL/SET fixes shipped in the same release.
+      regressionSupported = (await probe.call("COMMAND", "INFO", "VADD"))[0] !== null;
+      if (regressionSupported) {
+        await probe.call(
+          "ACL",
+          "SETUSER",
+          ACL_USER,
+          "on",
+          `>${ACL_PASSWORD}`,
+          `~${ALLOWED_PREFIX}*`,
+          "+@all"
+        );
+      }
+    } finally {
+      probe.disconnect();
+    }
+    await load(helper, redisNode, [
+      CONFIG,
+      ACL_CONFIG,
+      commandNode("setup-rpush", "RPUSH"),
+      helperNode("setup-rpush"),
+      commandNode("setup-geoadd", "GEOADD"),
+      helperNode("setup-geoadd"),
+      commandNode("setup-xadd", "XADD"),
+      helperNode("setup-xadd"),
+      commandNode("setup-xgroup", "XGROUP"),
+      helperNode("setup-xgroup"),
+      commandNode("sort", "SORT", "acl-config"),
+      helperNode("sort"),
+      commandNode("georadius", "GEORADIUS", "acl-config"),
+      helperNode("georadius"),
+      commandNode("georadiusbymember", "GEORADIUSBYMEMBER", "acl-config"),
+      helperNode("georadiusbymember"),
+      commandNode("xread", "XREAD", "acl-config"),
+      helperNode("xread"),
+      commandNode("xreadgroup", "XREADGROUP", "acl-config"),
+      helperNode("xreadgroup"),
+      commandNode("set", "SET"),
+      helperNode("set"),
+      commandNode("vadd", "VADD"),
+      helperNode("vadd"),
+      commandNode("vgetattr", "VGETATTR"),
+      helperNode("vgetattr"),
+    ]);
+  });
+
+  after(async function () {
+    await helper.unload();
+    await helper.stopServer();
+    if (regressionSupported) {
+      const probe = directRedis();
+      try {
+        await probe.call("ACL", "DELUSER", ACL_USER);
+      } finally {
+        probe.disconnect();
+      }
+    }
+    await new Promise((resolve, reject) =>
+      cleanupKeys("test:8_10:acl:*", (err) => (err ? reject(err) : resolve()))
+    );
+  });
+
+  function skipIfUnsupported() {
+    if (!regressionSupported) {
+      this.skip();
+    }
+  }
+
+  it("SORT rejects a restricted user's out-of-pattern key (ACL bypass fix)", async function () {
+    skipIfUnsupported.call(this);
+    const key = `${FORBIDDEN_PREFIX}list`;
+    await invoke(helper, "setup-rpush", { topic: key, payload: ["c", "b", "a"] });
+
+    const err = await expectError(helper, "sort", { payload: [key, "ALPHA"] });
+    err.message.should.match(/NOPERM/);
+  });
+
+  it("GEORADIUS and GEORADIUSBYMEMBER reject a restricted user's out-of-pattern key", async function () {
+    skipIfUnsupported.call(this);
+    const key = `${FORBIDDEN_PREFIX}geo`;
+    await invoke(helper, "setup-geoadd", { payload: [key, "-122.27", "37.80", "Oakland"] });
+
+    (
+      await expectError(helper, "georadius", { payload: [key, "-122.27", "37.80", "100", "km"] })
+    ).message.should.match(/NOPERM/);
+    (
+      await expectError(helper, "georadiusbymember", { payload: [key, "Oakland", "100", "km"] })
+    ).message.should.match(/NOPERM/);
+  });
+
+  it("XREAD and XREADGROUP reject a restricted user's out-of-pattern key", async function () {
+    skipIfUnsupported.call(this);
+    const key = `${FORBIDDEN_PREFIX}stream`;
+    await invoke(helper, "setup-xadd", { topic: key, payload: ["*", "field", "value"] });
+    await invoke(helper, "setup-xgroup", { payload: ["CREATE", key, "grp", "0"] });
+
+    (
+      await expectError(helper, "xread", { payload: ["COUNT", "1", "STREAMS", key, "0"] })
+    ).message.should.match(/NOPERM/);
+    (
+      await expectError(helper, "xreadgroup", {
+        payload: ["GROUP", "grp", "consumer1", "COUNT", "1", "STREAMS", key, ">"],
+      })
+    ).message.should.match(/NOPERM/);
+  });
+
+  it("SET rejects mutually exclusive NX/XX and IFEQ option combinations", async function () {
+    skipIfUnsupported.call(this);
+    const key = "test:8_10:acl:set:mutex";
+    await invoke(helper, "set", { topic: key, payload: "initial" });
+
+    for (const args of [
+      [key, "newval", "NX", "IFEQ", "initial"],
+      [key, "newval", "XX", "IFEQ", "initial"],
+      [key, "newval", "NX", "XX"],
+    ]) {
+      const err = await expectError(helper, "set", { payload: args });
+      err.message.should.match(/ERR syntax error/);
+    }
+  });
+
+  it("VADD ... CAS SETATTR sets the correct attribute count alongside the vector", async function () {
+    skipIfUnsupported.call(this);
+    const key = "test:8_10:acl:vadd:cas";
+
+    const added = await invoke(helper, "vadd", {
+      payload: [
+        key,
+        "VALUES",
+        "3",
+        "1",
+        "2",
+        "3",
+        "elem1",
+        "CAS",
+        "SETATTR",
+        JSON.stringify({ tag: "x" }),
+      ],
+    });
+    added.should.equal(1);
+
+    const attrs = await invoke(helper, "vgetattr", { payload: [key, "elem1"] });
+    JSON.parse(attrs).should.eql({ tag: "x" });
+  });
+});
+
 // BACKUP is deliberately excluded from the datalist (DATALIST_EXCLUSIONS above) because every
 // subcommand but HELP is ACL @admin @dangerous. Cover only the safe, read-only HELP path here —
 // never a backup lifecycle mutation (START/SEAL/ABORT/CLEANUP) — while confirming the command
@@ -1100,10 +1288,17 @@ describe("redis-command datalist vs. live COMMAND LIST", function () {
     const client = directRedis();
     let liveRoots;
     try {
-      // COMMAND LIST is a Redis 7.0+ subcommand; older servers (e.g. the 6.2.3 minimum-version
-      // profile) reject it with "Unknown subcommand". Self-skip there rather than failing —
-      // this audit is scoped to the current-feature (Redis 8.10) target, not the compatibility
-      // floor.
+      // This audit is scoped to the Redis 8.10 target specifically: Valkey (this package's
+      // other tested engine) does not bundle Search/JSON/Bloom/Cuckoo/CMS/TopK/t-digest/Time
+      // Series and would fail the "stale suggestion" half of this check on every one of those
+      // command roots, which is expected and not a real gap. Detect it via INFO server's
+      // Valkey-only server_name field and self-skip.
+      const info = await client.call("INFO", "server");
+      if (/(?:^|\n)server_name:valkey/.test(info)) {
+        this.skip();
+      }
+      // COMMAND LIST is a Redis 7.0+ subcommand. Self-skip on an older server rather than
+      // failing — this audit is scoped to the current-feature (Redis 8.10) target.
       let list;
       try {
         list = await client.call("COMMAND", "LIST");

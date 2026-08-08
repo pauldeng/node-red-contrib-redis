@@ -4,13 +4,17 @@ const helper = require("node-red-node-test-helper");
 const Redis = require("ioredis");
 const redisNode = require("../redis.js");
 const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
-const { waitForNodeProp } = require("./helpers/wait");
+const { waitForBlockedCommand, waitForNodeProp, waitForSubscription } = require("./helpers/wait");
 const { clusterProneFlow, runClusterProneSuccessCases } = require("./helpers/cluster-prone");
 
 helper.init(require.resolve("node-red"));
 
-const describeSentinel =
-  process.env.REDIS_DEPLOYMENT === "sentinel-auth" ? describe : describe.skip;
+// Reused verbatim for the Valkey sentinel deployment (valkey-sentinel-auth) — same bootstrap,
+// same ACL syntax; only the underlying engine differs.
+const SENTINEL_DEPLOYMENTS = new Set(["sentinel-auth", "valkey-sentinel-auth"]);
+const describeSentinel = SENTINEL_DEPLOYMENTS.has(process.env.REDIS_DEPLOYMENT)
+  ? describe
+  : describe.skip;
 
 function auth() {
   return {
@@ -477,7 +481,13 @@ describeSentinel("Redis Sentinel auth deployment", function () {
         resolve(msg);
       });
     });
-    setTimeout(() => helper.getNode("pub-out").receive({ payload: "hello" }), 300);
+    const pubsubClient = directRedis();
+    try {
+      await waitForSubscription(pubsubClient, channel);
+    } finally {
+      pubsubClient.disconnect();
+    }
+    helper.getNode("pub-out").receive({ payload: "hello" });
     const received = await subMessage;
     received.topic.should.equal(channel);
     received.payload.should.equal("hello");
@@ -490,9 +500,9 @@ describeSentinel("Redis Sentinel auth deployment", function () {
       });
     });
     const client = directRedis();
-    setTimeout(() => {
-      client.rpush(listKey, "queued").finally(() => client.disconnect());
-    }, 300);
+    await waitForBlockedCommand(client, "blpop");
+    await client.rpush(listKey, "queued");
+    client.disconnect();
     const popped = await popMessage;
     popped.topic.should.equal(listKey);
     popped.payload.should.equal("queued");

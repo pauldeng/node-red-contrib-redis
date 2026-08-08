@@ -1110,6 +1110,11 @@ describe("Scripting commands", function () {
     try {
       const names = ["EVAL", "EVALSHA", "EVAL_RO", "EVALSHA_RO", "FCALL", "FCALL_RO"];
       const infos = await Promise.all(names.map((name) => client.call("COMMAND", "INFO", name)));
+      // EVAL etc. exist on every tested engine; the script_runner flag itself is Redis
+      // 8.10-only (Valkey does not set it), so check for the flag, not the commands.
+      if (!infos[0][0][2].includes("script_runner")) {
+        this.skip();
+      }
       infos.forEach((info, i) => {
         info[0][2].should.containEql(
           "script_runner",
