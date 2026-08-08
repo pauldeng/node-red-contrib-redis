@@ -2413,7 +2413,9 @@
       <dd>When checked, this node gets its own dedicated Redis connection instead of sharing
           the common pooled connection. <strong>Required</strong> for commands that hold the
           connection open: <code>BLPOP</code>, <code>BRPOP</code>, <code>BLMOVE</code>,
-          <code>BZPOPMIN</code>, <code>BZPOPMAX</code>, <code>BLMPOP</code>, etc.</dd>
+          <code>BLMOVEM</code>, <code>BZPOPMIN</code>, <code>BZPOPMAX</code>,
+          <code>BLMPOP</code>, etc. Dedicated blocking connections are force-disconnected on
+          shutdown so an indefinite block cannot delay redeploy.</dd>
   </dl>
 
   <h3>How arguments are assembled</h3>

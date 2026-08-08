@@ -1,7 +1,8 @@
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
-const { redisConfigNode } = require("./helpers/deployment");
+const { directRedis, redisConfigNode } = require("./helpers/deployment");
+const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
 
 helper.init(require.resolve("node-red"));
 
@@ -640,37 +641,113 @@ describe("Server commands", function () {
     });
   });
 
-  it("should SLOWLOG GET return the slow log entries array", function (done) {
-    const flow = [
+  it("should SLOWLOG GET return the slow log entries array", async function () {
+    await load(helper, redisNode, [
       configNode,
-      {
-        id: "slowlog-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SLOWLOG",
-        name: "SLOWLOG",
-        topic: "",
-        params: "[]",
-        wires: [["slowlog-helper"]],
-      },
-      { id: "slowlog-helper", type: "helper" },
-    ];
+      commandNode("slowlog", "SLOWLOG"),
+      helperNode("slowlog"),
+    ]);
 
-    helper.load(redisNode, flow, () => {
-      const slowlogNode = helper.getNode("slowlog-node");
-      const slowlogHelper = helper.getNode("slowlog-helper");
+    const result = await invoke(helper, "slowlog", { payload: "GET" });
+    result.should.be.an.Array();
+  });
 
-      slowlogHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          done();
-        } catch (err) {
-          done(err);
-        }
-      });
+  // Redis 8.10 adds a 7th element to each SLOWLOG GET entry: the original command's total
+  // argument count (distinct from the arguments array, which Redis itself may truncate for
+  // very long commands). This is a server-native reply change -- pass it through unchanged,
+  // add nothing to normalize or drop it.
+  it("SLOWLOG GET entries include Redis 8.10's added total-argument-count field", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("slowlog", "SLOWLOG"),
+      helperNode("slowlog"),
+    ]);
 
-      slowlogNode.receive({ payload: "GET" });
+    const client = directRedis();
+    let originalThreshold;
+    try {
+      originalThreshold = (await client.call("CONFIG", "GET", "slowlog-log-slower-than"))[1];
+      await client.call("CONFIG", "SET", "slowlog-log-slower-than", "0");
+      await client.call("SLOWLOG", "RESET");
+      const commandArgs = Array.from({ length: 40 }, (_, i) => `test:server:slowlog:${i}`);
+      await client.call("MGET", ...commandArgs);
+
+      const entries = await invoke(helper, "slowlog", { payload: ["GET", "1"] });
+      entries.should.be.an.Array();
+      entries.length.should.equal(1);
+      const entry = entries[0];
+      entry.should.be.an.Array();
+      entry.length.should.equal(7);
+      const [, , , args, , , totalArgCount] = entry;
+      args.length.should.equal(32);
+      args[0].should.equal("MGET");
+      args[args.length - 1].should.match(/more arguments/);
+      totalArgCount.should.equal(commandArgs.length + 1);
+    } finally {
+      await client.call("CONFIG", "SET", "slowlog-log-slower-than", originalThreshold);
+      client.disconnect();
+    }
+  });
+
+  // Compact hashes (Redis 8.10): the server's own hash encoding stays an implementation
+  // detail -- this only confirms the generic redis-command pass-through surfaces the new
+  // metrics unchanged, and that MEMORY USAGE still works normally on a compact hash built
+  // via HIMPORT. No compact-hash toggle or model is added on our side.
+  it("passes through the new compact-hash metrics in INFO STATS, INFO MEMORY, and MEMORY STATS", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("infostats", "INFO"),
+      helperNode("infostats"),
+      commandNode("infomemory", "INFO"),
+      helperNode("infomemory"),
+      commandNode("memorystats", "MEMORY"),
+      helperNode("memorystats"),
+    ]);
+
+    const stats = await invoke(helper, "infostats", { payload: "stats" });
+    stats.should.be.a.String();
+    stats.should.containEql("hash_templates");
+    stats.should.containEql("hash_template_keys");
+
+    const memory = await invoke(helper, "infomemory", { payload: "memory" });
+    memory.should.be.a.String();
+    memory.should.containEql("used_memory_hash_templates");
+
+    const memStats = await invoke(helper, "memorystats", { payload: "STATS" });
+    memStats.should.be.an.Array();
+    memStats.should.containEql("hash.templates");
+  });
+
+  it("MEMORY USAGE reports bytes for a compact hash the same way as an ordinary one", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("himportPrepare", "HIMPORT"),
+      helperNode("himportPrepare"),
+      commandNode("himportSet", "HIMPORT"),
+      helperNode("himportSet"),
+      commandNode("memoryUsage", "MEMORY"),
+      helperNode("memoryUsage"),
+    ]);
+
+    await invoke(helper, "himportPrepare", {
+      payload: ["PREPARE", "test:server:compacthash:fs", "f1", "f2"],
     });
+    await invoke(helper, "himportSet", {
+      payload: ["SET", "test:server:compacthash", "test:server:compacthash:fs", "v1", "v2"],
+    });
+
+    const usage = await invoke(helper, "memoryUsage", {
+      payload: ["USAGE", "test:server:compacthash"],
+    });
+    usage.should.be.a.Number();
+    usage.should.be.above(0);
+
+    const client = directRedis();
+    try {
+      await client.call("DEL", "test:server:compacthash");
+    } finally {
+      client.disconnect();
+    }
   });
 
   it("should LOLWUT return the Redis art string", function (done) {

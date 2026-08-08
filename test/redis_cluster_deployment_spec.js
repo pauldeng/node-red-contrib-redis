@@ -228,6 +228,54 @@ describeCluster("Redis Cluster auth deployment", function () {
     });
   });
 
+  // SUNIONCARD/SDIFFCARD are Redis 8.10-only, so they stay out of the shared
+  // Redis-7.2-compatible cluster-prone matrix above (reused later by the minimum-version
+  // compatibility profile) and get their own same-slot/cross-slot coverage here.
+  it("runs Redis 8.10 SUNIONCARD/SDIFFCARD with same-slot keys and rejects them cross-slot", async function () {
+    await load(
+      helper,
+      redisNode,
+      commandFlow([
+        { id: "sadd", command: "SADD" },
+        { id: "sunioncard", command: "SUNIONCARD" },
+        { id: "sdiffcard", command: "SDIFFCARD" },
+      ])
+    );
+
+    const setA = "test:cluster:{8-10}:set-a";
+    const setB = "test:cluster:{8-10}:set-b";
+    await invoke(helper, "sadd", { topic: setA, payload: ["a", "b", "c"] });
+    await invoke(helper, "sadd", { topic: setB, payload: ["b", "c", "d"] });
+
+    (await invoke(helper, "sunioncard", { payload: ["2", setA, setB] })).should.equal(4);
+    (await invoke(helper, "sunioncard", { payload: ["2", setA, setB, "LIMIT", "2"] })).should.equal(
+      2
+    );
+    (await invoke(helper, "sdiffcard", { payload: ["2", setA, setB] })).should.equal(1);
+
+    const crossA = "test:cluster:{slot-a}:set-a";
+    const crossB = "test:cluster:{slot-b}:set-b";
+    const direct = directCluster();
+    try {
+      for (const [id, command] of [
+        ["sunioncard", "SUNIONCARD"],
+        ["sdiffcard", "SDIFFCARD"],
+      ]) {
+        const surfaced = await expectError(helper, id, { payload: ["2", crossA, crossB] });
+        let serverError;
+        try {
+          await direct.call(command, "2", crossA, crossB);
+        } catch (err) {
+          serverError = err;
+        }
+        (serverError instanceof Error).should.equal(true);
+        surfaced.message.should.equal(serverError.message);
+      }
+    } finally {
+      direct.disconnect();
+    }
+  });
+
   it("supports pub/sub and blocking list input nodes", async function () {
     const channel = "test:cluster:pubsub";
     const listKey = "test:cluster:{blocking}:list";

@@ -869,7 +869,7 @@ module.exports = function (RED) {
     node.on("close", async function (done) {
       removeListeners();
       node.status({});
-      await disconnect(id);
+      await disconnect(id, node.block);
       client = null;
       done();
     });

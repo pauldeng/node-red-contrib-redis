@@ -149,6 +149,10 @@ Command-family coverage, all driving `redis-command` through `client.call`:
 
 - `bit_`, `geo_`, `hash_`, `hyperloglog_`, `key_`, `list_`, `scripting_`, `server_`,
   `set_`, `sorted_set_`, `stream_`, `string_commands_spec.js`
+- Redis 8.10 core coverage stays in those matching command-family specs: `HIMPORT` and ordinary
+  hash compatibility; `LMOVEM`/`BLMOVEM` ordering, timeout, and shutdown; `SUNIONCARD`/
+  `SDIFFCARD`; `XREAD`/`XREADGROUP` `MAXCOUNT` and `MAXSIZE`; the `script_runner` metadata flag;
+  expanded `SLOWLOG GET` replies; and compact-hash metrics
 - `scripting_commands_spec.js` additionally drives the `redis-lua-script` node directly for
   read-only (`EVAL_RO`/`EVALSHA_RO`), Function mode (`FCALL`/`FCALL_RO`, reload recovery), and
   block mode — including a server-side dedicated-connection proof that sets an ioredis

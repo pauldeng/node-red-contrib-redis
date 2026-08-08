@@ -1,7 +1,8 @@
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
-const { redisConfigNode } = require("./helpers/deployment");
+const { directRedis, redisConfigNode } = require("./helpers/deployment");
+const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
 
 helper.init(require.resolve("node-red"));
 
@@ -1380,5 +1381,219 @@ describe("List commands", function () {
 
       rpushNode.receive({ topic: "test:list:brpop", payload: "myvalue" });
     });
+  });
+
+  // LMOVEM/BLMOVEM (Redis 8.10) move up to (COUNT) or exactly (EXACTLY) N elements
+  // atomically, returned as a flat array in the requested ordering (OBO/BULK).
+  it("LMOVEM moves multiple elements in order and drains an emptied source", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("rpush", "RPUSH"),
+      helperNode("rpush"),
+      commandNode("lmovem", "LMOVEM"),
+      helperNode("lmovem"),
+    ]);
+
+    await invoke(helper, "rpush", { topic: "test:list:lmovem:src", payload: ["a", "b", "c"] });
+
+    const moved = await invoke(helper, "lmovem", {
+      payload: [
+        "test:list:lmovem:src",
+        "test:list:lmovem:dst",
+        "LEFT",
+        "RIGHT",
+        "COUNT",
+        "3",
+        "BULK",
+      ],
+    });
+    moved.should.eql(["a", "b", "c"]);
+
+    const client = directRedis();
+    try {
+      (await client.exists("test:list:lmovem:src")).should.equal(0);
+      (await client.lrange("test:list:lmovem:dst", 0, -1)).should.eql(["a", "b", "c"]);
+    } finally {
+      await client.del("test:list:lmovem:dst");
+      client.disconnect();
+    }
+  });
+
+  it("LMOVEM distinguishes one-by-one from bulk ordering when moving on the same side", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("rpush", "RPUSH"),
+      helperNode("rpush"),
+      commandNode("lmovem", "LMOVEM"),
+      helperNode("lmovem"),
+    ]);
+
+    for (const mode of ["OBO", "BULK"]) {
+      await invoke(helper, "rpush", {
+        topic: `test:list:lmovem:${mode}:src`,
+        payload: ["a", "b", "c"],
+      });
+      await invoke(helper, "rpush", {
+        topic: `test:list:lmovem:${mode}:dst`,
+        payload: "x",
+      });
+    }
+
+    const oneByOne = await invoke(helper, "lmovem", {
+      payload: [
+        "test:list:lmovem:OBO:src",
+        "test:list:lmovem:OBO:dst",
+        "LEFT",
+        "LEFT",
+        "COUNT",
+        "3",
+        "OBO",
+      ],
+    });
+    const bulk = await invoke(helper, "lmovem", {
+      payload: [
+        "test:list:lmovem:BULK:src",
+        "test:list:lmovem:BULK:dst",
+        "LEFT",
+        "LEFT",
+        "COUNT",
+        "3",
+        "BULK",
+      ],
+    });
+
+    oneByOne.should.eql(["c", "b", "a"]);
+    bulk.should.eql(["a", "b", "c"]);
+
+    const client = directRedis();
+    try {
+      (await client.lrange("test:list:lmovem:OBO:dst", 0, -1)).should.eql(["c", "b", "a", "x"]);
+      (await client.lrange("test:list:lmovem:BULK:dst", 0, -1)).should.eql(["a", "b", "c", "x"]);
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it("LMOVEM EXACTLY returns nil and leaves the source untouched when not enough elements exist", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("rpush", "RPUSH"),
+      helperNode("rpush"),
+      commandNode("lmovem", "LMOVEM"),
+      helperNode("lmovem"),
+    ]);
+
+    await invoke(helper, "rpush", { topic: "test:list:lmovem:exact:src", payload: ["a", "b"] });
+
+    const result = await invoke(helper, "lmovem", {
+      payload: [
+        "test:list:lmovem:exact:src",
+        "test:list:lmovem:exact:dst",
+        "LEFT",
+        "RIGHT",
+        "EXACTLY",
+        "5",
+        "BULK",
+      ],
+    });
+    (result === null).should.be.true();
+
+    const client = directRedis();
+    try {
+      (await client.lrange("test:list:lmovem:exact:src", 0, -1)).should.eql(["a", "b"]);
+    } finally {
+      await client.del("test:list:lmovem:exact:src");
+      client.disconnect();
+    }
+  });
+
+  it("BLMOVEM moves multiple elements immediately when data is present", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("rpush", "RPUSH"),
+      helperNode("rpush"),
+      commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
+      helperNode("blmovem"),
+    ]);
+
+    await invoke(helper, "rpush", { topic: "test:list:blmovem:src", payload: ["x", "y", "z"] });
+
+    const moved = await invoke(helper, "blmovem", {
+      payload: [
+        "test:list:blmovem:src",
+        "test:list:blmovem:dst",
+        "LEFT",
+        "RIGHT",
+        "1",
+        "COUNT",
+        "2",
+        "BULK",
+      ],
+    });
+    moved.should.eql(["x", "y"]);
+
+    const client = directRedis();
+    try {
+      (await client.lrange("test:list:blmovem:dst", 0, -1)).should.eql(["x", "y"]);
+    } finally {
+      await client.del("test:list:blmovem:src", "test:list:blmovem:dst");
+      client.disconnect();
+    }
+  });
+
+  it("BLMOVEM resolves nil after its timeout when no data ever arrives", async function () {
+    this.timeout(8000);
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
+      helperNode("blmovem"),
+    ]);
+
+    const result = await invoke(
+      helper,
+      "blmovem",
+      {
+        payload: [
+          "test:list:blmovem:timeout:src",
+          "test:list:blmovem:timeout:dst",
+          "LEFT",
+          "RIGHT",
+          "1",
+          "COUNT",
+          "1",
+          "BULK",
+        ],
+      },
+      5000
+    );
+    (result === null).should.be.true();
+  });
+
+  it("BLMOVEM (Block Commands) closes cleanly while still blocked on an empty source", async function () {
+    this.timeout(10000);
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
+      helperNode("blmovem"),
+    ]);
+
+    helper.getNode("blmovem-node").receive({
+      payload: [
+        "test:list:blmovem:shutdown:src",
+        "test:list:blmovem:shutdown:dst",
+        "LEFT",
+        "RIGHT",
+        "0",
+        "COUNT",
+        "1",
+        "BULK",
+      ],
+    });
+
+    // give the blocking command a moment to actually reach Redis before tearing down
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const started = Date.now();
+    await helper.unload();
+    (Date.now() - started).should.be.below(1000);
   });
 });
