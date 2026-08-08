@@ -1,6 +1,6 @@
 {
   "name": "@pauldeng/node-red-contrib-redis",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Redis integration nodes for Node-RED with Cluster, Sentinel, streams, pub/sub, commands, Lua, and Redis Functions.",
   "main": "redis.js",
   "publishConfig": {
@@ -58,14 +58,14 @@
   },
   "devDependencies": {
     "husky": "^9.1.7",
-    "lint-staged": "^17.1.0",
-    "mocha": "^11.7.6",
-    "node-red": "^5.0.1",
+    "lint-staged": "^17.3.0",
+    "mocha": "^11.8.0",
+    "node-red": "^5.0.4",
     "node-red-node-test-helper": "^0.3.6",
-    "playwright": "^1.61.1",
-    "prettier": "^3.9.5"
+    "playwright": "^1.62.1",
+    "prettier": "^3.9.6"
   },
   "dependencies": {
-    "ioredis": "^5.11.1"
+    "ioredis": "^6.0.0"
   }
 }

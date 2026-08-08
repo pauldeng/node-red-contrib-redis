@@ -54,10 +54,11 @@ Mocha tests (`ls test/*_spec.js` for the live list — do not rely on a hard-cod
   `test/string_commands_spec.js`, `test/redis_8_8_data_types_spec.js` (representative
   coverage for Array, Vector Sets, `INCREX`/`XNACK`, and the bundled JSON/Bloom/Cuckoo/
   CMS/TopK/t-digest/Time Series modules; each case self-skips via `COMMAND INFO` when
-  unsupported), `test/ioredis_v6_characterization_spec.js` (pins today's ioredis v5/RESP2
-  reply shapes for `HRANDFIELD WITHVALUES`, `VSIM WITHSCORES`, `XREAD`, `XREADGROUP`, and the
-  ten ioredis "sorted-set pair" commands sent in uppercase, as a baseline for the planned
-  ioredis v6 + RESP3 upgrade)
+  unsupported), `test/ioredis_v6_characterization_spec.js` (pins the legacy, pre-v6 RESP2-
+  equivalent reply shapes for `HRANDFIELD WITHVALUES`, `VSIM WITHSCORES`, `XREAD`,
+  `XREADGROUP`, and the ten ioredis "sorted-set pair" commands sent in uppercase, verified
+  against ioredis v6 + RESP3 with the `CASE_SENSITIVE_TRANSFORM_COMMANDS` dispatch-set
+  extension in `redis.js`)
 - deployment topology: `test/redis_cluster_deployment_spec.js`,
   `test/redis_sentinel_deployment_spec.js`, `test/memorydb_deployment_spec.js`
 - browser editor coverage: `test/playwright/redis-editor.spec.js` with helpers in

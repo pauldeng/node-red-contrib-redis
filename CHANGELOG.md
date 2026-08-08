@@ -5,8 +5,24 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **`ioredis` is now v6.** RESP3 is the default wire protocol between this package and Redis;
+  ioredis's default `legacy` reply mapping keeps existing Node-RED payload shapes stable (see
+  Fixed, below, for the dispatch-side half of that). `redis-instance` exposes the ioredis v6
+  client, a deliberate semver-major change to the raw client this package hands out.
+
 ### Fixed
 
+- `redis-command`'s uppercase-dispatch normalization (previously scoped to
+  `HSET`/`HMSET`/`MSET`/`MSETNX`) now also covers `HRANDFIELD`, `VSIM`, `XREAD`, `XREADGROUP`,
+  and the ten ioredis "sorted-set pair" commands (`ZDIFF`/`ZINTER`/`ZPOPMAX`/`ZPOPMIN`/
+  `ZUNION`/`ZRANDMEMBER`/`ZRANGE`/`ZRANGEBYSCORE`/`ZREVRANGE`/`ZREVRANGEBYSCORE`). ioredis v6
+  registers these commands' RESP3-to-legacy reply mapping under the exact lowercase spelling
+  only; without this, their replies would have silently switched from the pre-v6 flat
+  `[member, score, ...]` array shape to RESP3's native nested pairs whenever the editor's
+  suggested uppercase spelling was saved. `HGETALL` remains a deliberate exception — its
+  case-sensitive reply transformer is still bypassed, so it keeps returning a flat array.
 - `redis-in` `subscribe`/`psubscribe` now wait for the client's `ready` event before issuing
   the initial SUBSCRIBE/PSUBSCRIBE (immediately if already `ready`). Previously, a config with
   ioredis's `enableOfflineQueue: false` could reject that very first command because it was

@@ -176,12 +176,16 @@ saved string, number, or boolean is a single argument, including falsy `0`, `fal
 stringify a raw `null` into a literal empty-string argument on the wire — `null` keeps its
 historical meaning of "nothing configured" instead).
 
-The object-field/value transform for **HSET**/**MSET**/**HMSET**/**MSETNX** applies
-regardless of the saved command's case — ioredis only registers that transform under the
-exact lowercase spelling, so this node normalizes dispatch for those four command names
-only; every other command (including **HGETALL**, whose case-sensitive reply transformer
-this node deliberately bypasses, returning a flat array instead of an object) is sent with
-whatever case was saved.
+The object-field/value argument transform for **HSET**/**MSET**/**HMSET**/**MSETNX**, and the
+legacy flat-array reply shape for **HRANDFIELD** `WITHVALUES`, **VSIM** `WITHSCORES`,
+**XREAD**, **XREADGROUP**, and the ten ioredis "sorted-set pair" commands (`ZDIFF`, `ZINTER`,
+`ZPOPMAX`, `ZPOPMIN`, `ZUNION`, `ZRANDMEMBER`, `ZRANGE`, `ZRANGEBYSCORE`, `ZREVRANGE`,
+`ZREVRANGEBYSCORE`), all apply regardless of the saved command's case — ioredis only
+registers these argument/reply transforms under the exact lowercase spelling, so this node
+normalizes dispatch for those eighteen command names only (`CASE_SENSITIVE_TRANSFORM_COMMANDS`
+in `redis.js`); every other command (including **HGETALL**, whose case-sensitive reply
+transformer this node deliberately bypasses, returning a flat array instead of an object) is
+sent with whatever case was saved.
 
 The **Command** field is a free-text input backed by a `<datalist>` of suggestions derived
 from the Redis 8.8 command catalog (retired RedisAI/RedisGraph/RedisGears entries removed;
