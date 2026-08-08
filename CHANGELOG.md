@@ -20,6 +20,8 @@ All notable changes to this project are documented here. This project follows
   `path`, since ioredis gives it precedence over `host`/`port`. Scoped to local standalone
   Single connections only — not offered for Cluster, Sentinel, or alongside TLS. No runtime or
   saved-flow schema change was needed; ioredis already accepts `{path: "/path/to/redis.sock"}`.
+  Empty socket paths cannot be tested or saved, and existing TCP `family` options survive
+  opening the editor or temporarily switching transports.
 
 ### Fixed
 

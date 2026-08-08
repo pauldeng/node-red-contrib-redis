@@ -161,6 +161,63 @@ test.describe("Node-RED Redis editor", () => {
     await saveConfigDialog(page);
   });
 
+  test("redis-config requires a Unix socket path before testing or saving", async ({ page }) => {
+    nodeRed = await startNodeRed(noauthOptions());
+    await openEditor(page, nodeRed.url);
+    await openRedisConfig(page);
+
+    await setSelectValue(page, "#redis-config-single-transport", "unix");
+    await expect(page.locator("#redis-config-single-path-message")).toHaveText(
+      "A socket path is required"
+    );
+    await expect(page.locator("#node-config-dialog-ok")).toBeDisabled();
+
+    const testRow = page.locator("#redis-config-tab-connection .redis-config-test-row");
+    await testRow.locator(".redis-config-test-button").click();
+    await expect(testRow.locator(".redis-config-test-message")).toHaveText(
+      "A socket path is required"
+    );
+
+    await setInputValue(page, "#redis-config-single-path", "/tmp/redis.sock");
+    await expect(page.locator("#node-config-dialog-ok")).toBeEnabled();
+    await saveConfigDialog(page);
+
+    const options = JSON.parse(await page.evaluate(() => RED.nodes.node("redis-config-1").options));
+    expect(options.path).toBe("/tmp/redis.sock");
+    expect(options).not.toHaveProperty("host");
+    expect(options).not.toHaveProperty("port");
+    expect(options).not.toHaveProperty("family");
+    expect(options).not.toHaveProperty("tls");
+  });
+
+  test("redis-config preserves TCP family across Unix transport toggles", async ({ page }) => {
+    nodeRed = await startNodeRed({ host: "127.0.0.1", port: 6379, family: 4 });
+    await openEditor(page, nodeRed.url);
+    await openRedisConfig(page);
+
+    let options = await page.evaluate(() =>
+      JSON.parse(RED.nodes.node("redis-config-1").redisConfigOptionsEditor.getValue())
+    );
+    expect(options.family).toBe(4);
+
+    await setSelectValue(page, "#redis-config-single-transport", "unix");
+    await setInputValue(page, "#redis-config-single-path", "/tmp/redis.sock");
+    options = await page.evaluate(() =>
+      JSON.parse(RED.nodes.node("redis-config-1").redisConfigOptionsEditor.getValue())
+    );
+    expect(options).toEqual({ path: "/tmp/redis.sock" });
+
+    await setSelectValue(page, "#redis-config-single-transport", "tcp");
+    options = await page.evaluate(() =>
+      JSON.parse(RED.nodes.node("redis-config-1").redisConfigOptionsEditor.getValue())
+    );
+    expect(options).toEqual({ host: "127.0.0.1", port: 6379, family: 4 });
+
+    await saveConfigDialog(page);
+    const savedOptions = await page.evaluate(() => RED.nodes.node("redis-config-1").options);
+    expect(JSON.parse(savedOptions)).toEqual({ host: "127.0.0.1", port: 6379, family: 4 });
+  });
+
   test("redis-config can target MemoryDB env options when configured", async ({ page }) => {
     test.skip(
       !memoryDbConfigured(),

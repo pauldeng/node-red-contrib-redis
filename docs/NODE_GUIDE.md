@@ -34,9 +34,10 @@ Key implementation points:
   because ioredis gives `path` precedence over `host`/`port`. No runtime or saved-flow schema
   change was needed — ioredis already accepts `{path: "..."}` in `new Redis(options)`.
   `cleanKnownSingleKeys` in `redis.html` now also strips `path` and `family` so a transport
-  switch never leaves a stale key behind. A non-empty path is required (inline message, not a
-  hard block); an absolute path is recommended but not enforced — a relative path is a soft
-  warning, not an error
+  switch never leaves a stale key behind. A non-empty path is required before testing or
+  saving; an absolute path is recommended but not enforced — a relative path is a soft warning,
+  not an error. Existing TCP `family` options are retained when the editor opens or the
+  transport is temporarily toggled, but are excluded from Unix socket options
 
 Safe changes:
 
