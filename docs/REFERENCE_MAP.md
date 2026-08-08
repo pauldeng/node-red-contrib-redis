@@ -57,10 +57,13 @@ Command-family coverage (all drive `redis-command` via `client.call`):
 - `../test/sorted_set_commands_spec.js`
 - `../test/stream_commands_spec.js`
 - `../test/string_commands_spec.js`
-- `../test/redis_8_8_data_types_spec.js` — representative coverage (Array, Vector Sets,
+- `../test/redis_8_10_commands_spec.js` — representative coverage (Array, Vector Sets,
   `INCREX`, `XNACK`, and the bundled `JSON`/`BF`/`CF`/`CMS`/`TOPK`/`TDIGEST`/`TS` modules) for
-  Redis 8.8 data-type families with no existing family spec; each case self-skips via
-  `COMMAND INFO` when the connected Redis lacks that command
+  Redis data-type families with no existing family spec, plus the safe `BACKUP HELP` path and
+  the live `redis-command` datalist-vs-`COMMAND LIST` completeness check; each case self-skips
+  via `COMMAND INFO` when the connected Redis lacks that command. This is the primary,
+  current-feature target (`redis:8.10-alpine`); see `../docs/TESTING.md` for the separate
+  minimum-version compatibility profile
 - `../test/ioredis_v6_characterization_spec.js` — pins the legacy (pre-v6, RESP2-equivalent)
   reply shapes for `HRANDFIELD WITHVALUES`, `VSIM WITHSCORES`, `XREAD`, `XREADGROUP`, and the
   ten ioredis "sorted-set pair" commands (`zdiff`/`zinter`/`zpopmax`/`zpopmin`/`zunion`/

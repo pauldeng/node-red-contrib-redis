@@ -14,6 +14,14 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- Redis `8.10` is now the primary, tested target across every deployment in the test matrix
+  (previously Redis 8.8 for standalone, Redis 7.2 for Cluster/Sentinel). Formally supports
+  Redis `6.2.3+` and Valkey `7.2.5+` as the minimum versions.
+- `redis-command` suggests ten new Redis 8.10 command roots: `HIMPORT`, `LMOVEM`, `BLMOVEM`,
+  `SUNIONCARD`, `SDIFFCARD`, `FT.ALIASLIST`, `TS.NRANGE`, `TS.NREVRANGE`, `TS.READ`, and
+  `TS.QUERYLABELS`. `BACKUP` is deliberately excluded from suggestions — every subcommand but
+  `HELP` is ACL `@admin`/`@dangerous` — but remains fully callable via the free-text command
+  field.
 - `redis-config` **Single** mode gains a **Transport** selector: **TCP** (the default,
   unchanged) or **Unix socket**. Unix socket serializes as `{path, username?, password?, db?}`
   and removes stale `host`/`port`/`family`/`tls`; switching back to TCP removes the saved

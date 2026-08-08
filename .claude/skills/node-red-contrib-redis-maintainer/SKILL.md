@@ -51,9 +51,10 @@ Mocha tests (`ls test/*_spec.js` for the live list — do not rely on a hard-cod
   `test/list_commands_spec.js`, `test/scripting_commands_spec.js`,
   `test/server_commands_spec.js`, `test/set_commands_spec.js`,
   `test/sorted_set_commands_spec.js`, `test/stream_commands_spec.js`,
-  `test/string_commands_spec.js`, `test/redis_8_8_data_types_spec.js` (representative
+  `test/string_commands_spec.js`, `test/redis_8_10_commands_spec.js` (representative
   coverage for Array, Vector Sets, `INCREX`/`XNACK`, and the bundled JSON/Bloom/Cuckoo/
-  CMS/TopK/t-digest/Time Series modules; each case self-skips via `COMMAND INFO` when
+  CMS/TopK/t-digest/Time Series modules, plus the safe `BACKUP HELP` path and the live
+  datalist-vs-`COMMAND LIST` completeness check; each case self-skips via `COMMAND INFO` when
   unsupported), `test/ioredis_v6_characterization_spec.js` (pins the legacy, pre-v6 RESP2-
   equivalent reply shapes for `HRANDFIELD WITHVALUES`, `VSIM WITHSCORES`, `XREAD`,
   `XREADGROUP`, and the ten ioredis "sorted-set pair" commands sent in uppercase, verified

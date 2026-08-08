@@ -155,6 +155,27 @@ async function waitForRedis(options, label) {
   throw new Error(`Timed out waiting for ${label}: ${lastError && lastError.message}`);
 }
 
+// The standalone stages run the Redis 8.10 command-catalog suite
+// (test/redis_8_10_commands_spec.js), whose per-command COMMAND INFO capability checks
+// self-skip silently on an older or module-less Redis. A stale local image (or an
+// unexpectedly overridden REDIS_STANDALONE_IMAGE) would otherwise produce a fully green but
+// misleading run where every 8.10-specific case was quietly skipped. Fail loudly instead.
+async function assertRedisVersion(options, expectedPrefix, label) {
+  const client = quietRedis(new Redis(options));
+  try {
+    const info = await client.call("INFO", "server");
+    const match = /redis_version:(\S+)/.exec(info);
+    const version = match ? match[1] : null;
+    if (!version || !version.startsWith(expectedPrefix)) {
+      throw new Error(
+        `${label}: expected Redis ${expectedPrefix}x, got ${version || "an unparsable INFO server reply"}`
+      );
+    }
+  } finally {
+    client.disconnect();
+  }
+}
+
 async function waitForCluster() {
   const deadline = Date.now() + 45000;
   let lastError;
@@ -274,13 +295,19 @@ async function main() {
       name: "single-noauth",
       env: unauthEnv("single-noauth"),
       specs: standaloneSpecs(),
-      wait: () => waitForRedis(noauthOptions(), "single-noauth Redis"),
+      wait: async () => {
+        await waitForRedis(noauthOptions(), "single-noauth Redis");
+        await assertRedisVersion(noauthOptions(), "8.10.", "single-noauth Redis");
+      },
     },
     {
       name: "single-auth",
       env: authEnv("single-auth"),
       specs: standaloneSpecs(),
-      wait: () => waitForRedis(authOptions(), "single-auth Redis"),
+      wait: async () => {
+        await waitForRedis(authOptions(), "single-auth Redis");
+        await assertRedisVersion(authOptions(), "8.10.", "single-auth Redis");
+      },
     },
     {
       name: "cluster-auth",

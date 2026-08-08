@@ -30,11 +30,19 @@ npm test
 
 The runner executes these deployments sequentially:
 
-- `single-noauth`: Redis 8.8+ image on `127.0.0.1:6379`; standalone Mocha specs.
-- `single-auth`: Redis 8.8+ image on `127.0.0.1:6379` with ACL username/password; standalone Mocha specs.
-- `cluster-auth`: Redis 7.2 image, two authenticated Cluster masters with all slots assigned; topology specs plus Redis 7.2-supported cluster-prone command coverage.
-- `sentinel-auth`: Redis 7.2 image, three authenticated Redis data nodes plus three Sentinel processes; topology specs plus Redis 7.2-supported cluster-prone command coverage.
+- `single-noauth`: Redis 8.10+ image on `127.0.0.1:6379`; standalone Mocha specs. The runner
+  asserts `INFO server` reports Redis `8.10.x` before running the specs, so a stale local
+  image cannot silently downgrade the Redis 8.10 catalog suite to self-skipped coverage.
+- `single-auth`: Redis 8.10+ image on `127.0.0.1:6379` with ACL username/password; standalone
+  Mocha specs, with the same `8.10.x` version assertion.
+- `cluster-auth`: Redis 8.10 image, two authenticated Cluster masters with all slots assigned; topology specs plus Redis 7.2-supported cluster-prone command coverage.
+- `sentinel-auth`: Redis 8.10 image, three authenticated Redis data nodes plus three Sentinel processes; topology specs plus Redis 7.2-supported cluster-prone command coverage.
 - `memorydb`: optional AWS MemoryDB topology specs when `MEMORYDB_ENABLED=1`.
+
+All default images can be overridden with the `REDIS_STANDALONE_IMAGE` (single-noauth,
+single-auth, Playwright) and `REDIS_TOPOLOGY_IMAGE` (cluster-auth, sentinel-auth, Playwright)
+environment variables, which each deployment's `compose.yml` reads with a `redis:8.10-alpine`
+fallback.
 
 Run the browser editor suite:
 
@@ -141,13 +149,16 @@ Command-family coverage, all driving `redis-command` through `client.call`:
   block mode — including a server-side dedicated-connection proof that sets an ioredis
   `connectionName` on the config and counts named connections via `CLIENT LIST`
   (non-block nodes must pool onto one connection; each block node must add its own)
-- `redis_8_8_data_types_spec.js` — one representative test per Redis 8.8 data-type family
-  with no existing spec home: the Array type, Vector Sets, `INCREX`, `XNACK`, and the bundled
-  modules (`JSON.*`, `BF.*`, `CF.*`, `CMS.*`, `TOPK.*`, `TDIGEST.*`, `TS.*`). Not an
-  exhaustive per-command suite — the generic dispatch path plus one case per family is the
-  contract. Each case self-skips via a `COMMAND INFO` capability check when the connected
-  Redis doesn't support that command, so the file is also safe to run manually against an
-  older or module-less Redis
+- `redis_8_10_commands_spec.js` — one representative test per Redis data-type family with no
+  existing spec home: the Array type, Vector Sets, `INCREX`, `XNACK`, and the bundled modules
+  (`JSON.*`, `BF.*`, `CF.*`, `CMS.*`, `TOPK.*`, `TDIGEST.*`, `TS.*`), plus the safe `BACKUP
+HELP` path (`BACKUP`'s other subcommands are `@admin`/`@dangerous` and excluded from the
+  datalist). Not an exhaustive per-command suite — the generic dispatch path plus one case per
+  family is the contract. Each case self-skips via a `COMMAND INFO` capability check when the
+  connected Redis doesn't support that command, so the file is also safe to run manually
+  against an older or module-less Redis. Also hosts the live `redis-command` datalist-vs-
+  `COMMAND LIST` completeness check (every command this deployed Redis supports must be either
+  suggested or in `DATALIST_EXCLUSIONS`, and nothing suggested must be unsupported)
 - `ioredis_v6_characterization_spec.js` — characterization tests pinning the legacy
   (pre-ioredis-v6, RESP2-equivalent) reply shapes for `HRANDFIELD WITHVALUES`, `VSIM
 WITHSCORES`, `XREAD`, `XREADGROUP`, and the ten ioredis "sorted-set pair" commands, all sent

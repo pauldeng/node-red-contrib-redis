@@ -31,8 +31,10 @@ Symptoms:
 - command-family specs fail while basic `SET` / `GET` still work
 - failures are clustered in one command family spec
 
-First confirm the deployment under test uses the expected image. Standalone full-suite
-deployments use Redis 8.8+; Cluster and Sentinel topology deployments use Redis 7.2.
+First confirm the deployment under test uses the expected image. All deployments in the
+primary matrix (standalone, Cluster, Sentinel) use Redis 8.10+ by default; the standalone
+stages also assert `INFO server` reports `8.10.x` before running, so a stale local image
+fails loudly instead of silently skipping the Redis 8.10 command-catalog suite.
 
 ## Stale Test Keys
 
