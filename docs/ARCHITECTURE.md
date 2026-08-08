@@ -131,8 +131,11 @@ Implements:
 It sends Node-RED messages from Redis events or blocking loops.
 
 The blocking loops (blpop/brpop/bzpop/xreadgroup) retry every error with capped backoff and
-end only on node close; the close handler cancels any pending backoff. pub/sub recovery is
-handled by ioredis re-subscription.
+end only on node close; the close handler cancels any pending backoff. The very first
+`subscribe`/`psubscribe` waits for the client's `ready` event (immediately if already ready)
+so it behaves the same whether or not the config sets `enableOfflineQueue: false`; a
+`lazyConnect` client is started explicitly before that wait. Every reconnect after that is
+handled by ioredis's own re-subscription.
 
 ### `redis-out`
 

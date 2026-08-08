@@ -435,6 +435,101 @@ describe("redis-in node", function () {
     });
   });
 
+  // ── initial subscribe with enableOfflineQueue: false ────────────────────
+
+  // RedisIn calls SUBSCRIBE/PSUBSCRIBE synchronously right after getConn(), before the
+  // client's status reaches "ready". The default enableOfflineQueue:true queues that command
+  // until ready, but a user-configured enableOfflineQueue:false rejects it immediately because
+  // the socket isn't writable yet. Cover both eager and lazy connection startup so the ready
+  // gate cannot leave a lazy client waiting forever.
+  function offlineQueueFlow(command, topic, lazyConnect) {
+    return [
+      redisConfigNode("config-offlineq", "OfflineQueue", {
+        enableOfflineQueue: false,
+        lazyConnect,
+      }),
+      {
+        id: "in",
+        type: "redis-in",
+        server: "config-offlineq",
+        command,
+        topic,
+        obj: false,
+        timeout: 0,
+        groupname: "",
+        consumername: "",
+        wires: [["h"]],
+      },
+      { id: "h", type: "helper" },
+    ];
+  }
+
+  async function waitForSubscription(client, command, topic, timeoutMs = 2000) {
+    const started = Date.now();
+    for (;;) {
+      const count =
+        command === "subscribe"
+          ? Number((await client.pubsub("NUMSUB", topic))[1])
+          : Number(await client.pubsub("NUMPAT"));
+      if (count > 0) {
+        return;
+      }
+      if (Date.now() - started > timeoutMs) {
+        throw new Error(command + " was not registered within " + timeoutMs + "ms");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+
+  [false, true].forEach((lazyConnect) => {
+    [
+      {
+        command: "subscribe",
+        topic: "test:in:subscribe:offlineq",
+        publishTopic: "test:in:subscribe:offlineq",
+      },
+      {
+        command: "psubscribe",
+        topic: "test:in:psubscribe:offlineq:*",
+        publishTopic: "test:in:psubscribe:offlineq:one",
+      },
+    ].forEach(({ command, topic, publishTopic }) => {
+      it(`${command} — receives messages with enableOfflineQueue:false and lazyConnect:${lazyConnect}`, async function () {
+        await new Promise((resolve, reject) => {
+          helper.load(redisNode, offlineQueueFlow(command, topic, lazyConnect), (err) =>
+            err ? reject(err) : resolve()
+          );
+        });
+
+        const h = helper.getNode("h");
+        const c = direct();
+        try {
+          await waitForSubscription(c, command, topic);
+          const received = new Promise((resolve, reject) => {
+            const timer = setTimeout(
+              () => reject(new Error("Timed out waiting for " + command + " message")),
+              2000
+            );
+            h.once("input", (msg) => {
+              clearTimeout(timer);
+              resolve(msg);
+            });
+          });
+
+          await c.publish(publishTopic, "hello offlineq");
+          const msg = await received;
+          msg.topic.should.equal(publishTopic);
+          msg.payload.should.equal("hello offlineq");
+          if (command === "psubscribe") {
+            msg.pattern.should.equal(topic);
+          }
+        } finally {
+          c.disconnect();
+        }
+      });
+    });
+  });
+
   it("psubscribe — receives messages from multiple matching channels", function (done) {
     helper.load(
       redisNode,

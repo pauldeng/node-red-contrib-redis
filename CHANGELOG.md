@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `redis-in` `subscribe`/`psubscribe` now wait for the client's `ready` event before issuing
+  the initial SUBSCRIBE/PSUBSCRIBE (immediately if already `ready`). Previously, a config with
+  ioredis's `enableOfflineQueue: false` could reject that very first command because it was
+  sent before the client was ready, permanently failing to subscribe. A `lazyConnect` client
+  is started explicitly before waiting for `ready`. Every reconnect after the first is
+  unaffected — ioredis's own re-subscription already covers it.
+
 ## [2.0.0] - 2026-07-26
 
 First release since `1.4.0`. Read the **Breaking changes** section before upgrading: existing
