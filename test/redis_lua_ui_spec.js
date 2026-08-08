@@ -267,6 +267,124 @@ describe("redis-config UI template", function () {
   });
 });
 
+// Narrow to the Single-mode section of the redis-config template so a Cluster/Sentinel
+// section can never accidentally satisfy a Transport-selector assertion meant for Single.
+function extractSingleModeSection(source) {
+  var start = source.indexOf('id="redis-config-single-section"');
+  var end = source.indexOf('id="redis-config-cluster-section"', start);
+  return source.slice(start, end);
+}
+
+describe("redis-config Single-mode Unix socket transport", function () {
+  var singleSection = extractSingleModeSection(html);
+
+  it("declares a Transport select defaulting to TCP before Unix socket", function () {
+    assert.match(
+      singleSection,
+      /<select id="redis-config-single-transport"[^>]*>\s*<option value="tcp">TCP<\/option>\s*<option value="unix">Unix socket<\/option>/,
+      "Single mode should offer a Transport select with TCP listed (and thus selected) before Unix socket"
+    );
+  });
+
+  it("scopes the Transport select to Single mode only", function () {
+    assert.doesNotMatch(
+      html.slice(html.indexOf('id="redis-config-cluster-section"')),
+      /redis-config-single-transport/,
+      "Cluster/Sentinel/ConnString sections must not reference the Single-mode Transport select"
+    );
+  });
+
+  it("keeps host/port/TLS and the socket path in separate provider-style subsections", function () {
+    assert.match(
+      singleSection,
+      /id="redis-config-single-tcp-section"[\s\S]*?id="redis-config-single-host"[\s\S]*?id="redis-config-single-port"[\s\S]*?id="redis-config-single-tls"/,
+      "the TCP subsection should contain host, port, and TLS"
+    );
+    assert.match(
+      singleSection,
+      /id="redis-config-single-unix-section"[\s\S]*?id="redis-config-single-path"/,
+      "the Unix socket subsection should contain the socket path field"
+    );
+  });
+
+  it("keeps username, password, and logical DB shared outside both transport subsections", function () {
+    var afterUnixSection = singleSection.slice(
+      singleSection.indexOf('id="redis-config-single-unix-section"')
+    );
+    assert.match(
+      afterUnixSection,
+      /id="redis-config-single-username"[\s\S]*?id="redis-config-single-password"[\s\S]*?id="redis-config-single-db"/,
+      "username, password, and logical DB should be declared once, shared across transports"
+    );
+  });
+
+  it("cleanKnownSingleKeys strips path and family so stale keys never survive a transport switch", function () {
+    assert.match(
+      html,
+      /function cleanKnownSingleKeys\(options\)[\s\S]*?\[\s*"host",\s*"port",\s*"family",\s*"username",\s*"password",\s*"db",\s*"tls",\s*"path",?\s*\]/,
+      "cleanKnownSingleKeys should exclude path and family alongside the existing known keys"
+    );
+  });
+
+  it("buildSingleOptions serializes a Unix socket connection as {path, username?, password?, db?} with no host/port/tls", function () {
+    var m = html.match(/function buildSingleOptions\(existing\)\s*\{([\s\S]*?)\n {6}\}/);
+    assert.ok(m, "buildSingleOptions should be present");
+    var body = m[1];
+    assert.match(
+      body,
+      /if \(transport === "unix"\) \{\s*base\.path\s*=/,
+      "the unix branch should set base.path from the socket-path field"
+    );
+    var unixBranch = body.slice(
+      body.indexOf('if (transport === "unix")'),
+      body.indexOf("} else {")
+    );
+    assert.doesNotMatch(
+      unixBranch,
+      /base\.host|base\.port/,
+      "the unix branch must not set host or port"
+    );
+    var tcpBranch = body.slice(body.indexOf("} else {"));
+    assert.match(
+      tcpBranch,
+      /base\.host\s*=[\s\S]*?base\.port\s*=/,
+      "the tcp branch should set host and port"
+    );
+    assert.doesNotMatch(tcpBranch, /base\.path/, "the tcp branch must not set path");
+  });
+
+  it("drops a stale path when switching back to TCP (base is rebuilt fresh via cleanKnownSingleKeys)", function () {
+    var m = html.match(/function buildSingleOptions\(existing\)\s*\{([\s\S]*?)\n {6}\}/);
+    var body = m[1];
+    assert.match(
+      body,
+      /var base = cleanKnownSingleKeys\(existing \|\| \{\}\);/,
+      "buildSingleOptions must rebuild from cleanKnownSingleKeys, which already strips any prior path"
+    );
+  });
+
+  it("requires a non-empty socket path and only recommends (not enforces) an absolute path", function () {
+    assert.match(
+      html,
+      /function updateSinglePathValidation\(\)[\s\S]*?if \(!path\) \{[\s\S]*?required[\s\S]*?redis-config-error/,
+      "an empty socket path should be flagged as required via the inline error styling"
+    );
+    assert.match(
+      html,
+      /function updateSinglePathValidation\(\)[\s\S]*?absolute path is recommended[\s\S]*?removeClass\("redis-config-error"\)/,
+      "a relative path should get a recommendation, not the error styling — no OS-specific validation is enforced"
+    );
+  });
+
+  it("populateFormFromOptions detects Unix socket transport from a saved path", function () {
+    assert.match(
+      html,
+      /var transport = options\.path \? "unix" : "tcp";\s*\$\("#redis-config-single-transport"\)\.val\(transport\);/,
+      "loading a saved config should select Unix socket when options.path is present, else TCP"
+    );
+  });
+});
+
 // Narrow to the redis-command registerType block so command-list assertions can't
 // accidentally match another node's template/select.
 function extractRedisCommandBlock(source) {

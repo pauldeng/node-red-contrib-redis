@@ -28,6 +28,15 @@ Key implementation points:
   variable name selected; saved JSON configs reopen on the Connection tab
 - while environment-variable connection options are selected, the Connection tab is
   read-only and becomes editable again when JSON is selected
+- Single mode has a **Transport** selector (TCP, the default, or Unix socket), scoped to
+  Single only — not offered for Cluster, Sentinel, or alongside TLS. Unix socket serializes
+  as `{path, username?, password?, db?}`; switching back to TCP drops the saved `path`
+  because ioredis gives `path` precedence over `host`/`port`. No runtime or saved-flow schema
+  change was needed — ioredis already accepts `{path: "..."}` in `new Redis(options)`.
+  `cleanKnownSingleKeys` in `redis.html` now also strips `path` and `family` so a transport
+  switch never leaves a stale key behind. A non-empty path is required (inline message, not a
+  hard block); an absolute path is recommended but not enforced — a relative path is a soft
+  warning, not an error
 
 Safe changes:
 

@@ -12,6 +12,15 @@ All notable changes to this project are documented here. This project follows
   Fixed, below, for the dispatch-side half of that). `redis-instance` exposes the ioredis v6
   client, a deliberate semver-major change to the raw client this package hands out.
 
+### Added
+
+- `redis-config` **Single** mode gains a **Transport** selector: **TCP** (the default,
+  unchanged) or **Unix socket**. Unix socket serializes as `{path, username?, password?, db?}`
+  and removes stale `host`/`port`/`family`/`tls`; switching back to TCP removes the saved
+  `path`, since ioredis gives it precedence over `host`/`port`. Scoped to local standalone
+  Single connections only — not offered for Cluster, Sentinel, or alongside TLS. No runtime or
+  saved-flow schema change was needed; ioredis already accepts `{path: "/path/to/redis.sock"}`.
+
 ### Fixed
 
 - `redis-command`'s uppercase-dispatch normalization (previously scoped to
