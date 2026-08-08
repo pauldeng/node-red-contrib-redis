@@ -30,13 +30,14 @@ npm install @pauldeng/node-red-contrib-redis
 
 ## Compatibility
 
-| Package                  | Supported                                                                         |
-| ------------------------ | --------------------------------------------------------------------------------- |
-| Node.js                  | >= 22.9                                                                           |
-| Node-RED                 | >= 5.0.0                                                                          |
-| Redis client             | ioredis 6.x (RESP3, legacy reply mapping)                                         |
-| Redis / Valkey server    | Redis 6.2.3+ / Valkey 7.2.5+; Redis 8.10 is the primary tested target             |
-| Redis deployments tested | Standalone (TCP or Unix socket), ACL auth, Cluster, Sentinel, AWS MemoryDB opt-in |
+| Package                  | Supported                                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Node.js                  | >= 22.9                                                                                                    |
+| Node-RED                 | >= 5.0.0                                                                                                   |
+| Redis client             | ioredis 6.x (RESP3, legacy reply mapping)                                                                  |
+| Redis / Valkey server    | Redis 8.10.x — the test matrix enforces this exact version                                                 |
+| Minimum supported server | Redis 6.2.3+ / Valkey 7.2.5+ (RESP3 support floor; separate from the primary matrix's Redis 8.10.x target) |
+| Redis deployments tested | Standalone, ACL auth, Cluster, Sentinel, AWS MemoryDB opt-in                                               |
 
 ## Upgrading From 1.4.0
 
