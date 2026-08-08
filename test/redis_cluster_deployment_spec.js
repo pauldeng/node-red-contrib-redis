@@ -276,6 +276,61 @@ describeCluster("Redis Cluster auth deployment", function () {
     }
   });
 
+  // Redis 8.10 fixed FT.SEARCH ... LIMIT returning too many results in cluster mode over
+  // RESP3 (the protocol this package negotiates by default since the ioredis v6 upgrade).
+  // This guards that fix at this package's own protocol boundary: FT.CREATE fans an index
+  // out to every shard automatically, so data spread across both masters' slots still needs
+  // its coordinator-merged reply capped at exactly LIMIT, not once per shard.
+  it("keeps FT.SEARCH's LIMIT count accurate over RESP3 across cluster shards (Redis 8.10 fix)", async function () {
+    const probe = directCluster();
+    let supported;
+    try {
+      supported = (await probe.call("COMMAND", "INFO", "FT.ALIASLIST"))[0] !== null;
+    } finally {
+      probe.disconnect();
+    }
+    if (!supported) {
+      this.skip();
+    }
+
+    await load(
+      helper,
+      redisNode,
+      commandFlow([
+        { id: "ftcreate", command: "FT.CREATE" },
+        { id: "hset", command: "HSET" },
+        { id: "ftsearch", command: "FT.SEARCH" },
+        { id: "ftdrop", command: "FT.DROPINDEX" },
+      ])
+    );
+
+    const indexName = "test:cluster:ftlimitidx";
+    const prefix = "test:cluster:ftdoc:";
+    await invoke(helper, "ftcreate", {
+      payload: [indexName, "ON", "HASH", "PREFIX", "1", prefix, "SCHEMA", "title", "TEXT"],
+    });
+    try {
+      for (let i = 0; i < 12; i++) {
+        await invoke(helper, "hset", {
+          topic: `${prefix}${i}`,
+          payload: ["title", "hello world"],
+        });
+      }
+
+      const result = await invoke(helper, "ftsearch", {
+        payload: [indexName, "hello", "LIMIT", "0", "5"],
+      });
+      // Every RESP3 map in the reply is flattened to [key, value, key, value, ...] by
+      // ioredis's default legacy reply mapping (FT.SEARCH has no dedicated transformer).
+      const totalResults = result[result.indexOf("total_results") + 1];
+      const results = result[result.indexOf("results") + 1];
+      totalResults.should.equal(12);
+      results.length.should.equal(5);
+    } finally {
+      await invoke(helper, "ftdrop", { payload: [indexName] });
+    }
+  });
+
   it("supports pub/sub and blocking list input nodes", async function () {
     const channel = "test:cluster:pubsub";
     const listKey = "test:cluster:{blocking}:list";

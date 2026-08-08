@@ -76,7 +76,7 @@ const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
 const { directRedis, redisConfigNode } = require("./helpers/deployment");
-const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
+const { commandNode, expectError, helperNode, invoke, load } = require("./helpers/topology");
 
 helper.init(require.resolve("node-red"));
 
@@ -103,6 +103,27 @@ function buildFlow() {
     flow.push(helperNode(f.id));
   });
   return flow;
+}
+
+async function waitForBlockedTsRead(timeoutMs = 2000) {
+  const client = directRedis();
+  const deadline = Date.now() + timeoutMs;
+  try {
+    while (Date.now() < deadline) {
+      const clients = await client.call("CLIENT", "LIST");
+      if (
+        clients
+          .split("\n")
+          .some((line) => /(?:^| )flags=\S*b/.test(line) && line.includes("cmd=ts.read"))
+      ) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  } finally {
+    client.disconnect();
+  }
+  throw new Error(`TS.READ was not blocked within ${timeoutMs}ms`);
 }
 
 describe("Redis 8.10 data-type families (generic redis-command path)", function () {
@@ -311,6 +332,696 @@ describe("Redis 8.10 data-type families (generic redis-command path)", function 
     } finally {
       client.disconnect();
     }
+  });
+});
+
+// Redis 8.10 bundled-module additions: FT.ALIASLIST, Malay/Tagalog stemming, the
+// FT.AGGREGATE COLLECT reducer, and the search-on-timeout `return-strict` policy. Each is
+// exercised through the generic redis-command path and self-skips when the bundled search
+// module is absent (older local Redis for `npm run test:mocha` iteration).
+describe("Redis 8.10 Search module additions (generic redis-command path)", function () {
+  this.timeout(8000);
+
+  let searchSupported;
+  const indexes = [
+    "test:8_10:ft:alias:idx",
+    "test:8_10:ft:ms:idx",
+    "test:8_10:ft:tl:idx",
+    "test:8_10:ft:collect:idx",
+  ];
+
+  before(async function () {
+    await new Promise((resolve, reject) =>
+      helper.startServer((err) => (err ? reject(err) : resolve()))
+    );
+    const probe = directRedis();
+    try {
+      searchSupported = (await probe.call("COMMAND", "INFO", "FT.ALIASLIST"))[0] !== null;
+    } finally {
+      probe.disconnect();
+    }
+    await load(helper, redisNode, [
+      CONFIG,
+      commandNode("ftcreate", "FT.CREATE"),
+      helperNode("ftcreate"),
+      commandNode("ftaliasadd", "FT.ALIASADD"),
+      helperNode("ftaliasadd"),
+      commandNode("ftaliaslist", "FT.ALIASLIST"),
+      helperNode("ftaliaslist"),
+      commandNode("hset", "HSET"),
+      helperNode("hset"),
+      commandNode("ftsearch", "FT.SEARCH"),
+      helperNode("ftsearch"),
+      commandNode("ftaggregate", "FT.AGGREGATE"),
+      helperNode("ftaggregate"),
+      commandNode("config", "CONFIG"),
+      helperNode("config"),
+    ]);
+  });
+
+  after(async function () {
+    await helper.unload();
+    await helper.stopServer();
+    if (searchSupported) {
+      const client = directRedis();
+      try {
+        for (const index of indexes) {
+          try {
+            await client.call("FT.DROPINDEX", index);
+          } catch (err) {
+            if (!/SEARCH_INDEX_NOT_FOUND/.test(err.message)) {
+              throw err;
+            }
+          }
+        }
+      } finally {
+        client.disconnect();
+      }
+    }
+    await new Promise((resolve, reject) =>
+      cleanupKeys("test:8_10:ft:*", (err) => (err ? reject(err) : resolve()))
+    );
+  });
+
+  function skipIfUnsupported() {
+    if (!searchSupported) {
+      this.skip();
+    }
+  }
+
+  it("FT.ALIASLIST returns every alias currently pointing at an index", async function () {
+    skipIfUnsupported.call(this);
+    const index = "test:8_10:ft:alias:idx";
+    await invoke(helper, "ftcreate", {
+      payload: [
+        index,
+        "ON",
+        "HASH",
+        "PREFIX",
+        "1",
+        "test:8_10:ft:alias:doc:",
+        "SCHEMA",
+        "title",
+        "TEXT",
+      ],
+    });
+    await invoke(helper, "ftaliasadd", { payload: ["test:8_10:ft:alias:one", index] });
+    await invoke(helper, "ftaliasadd", { payload: ["test:8_10:ft:alias:two", index] });
+
+    const aliases = await invoke(helper, "ftaliaslist", { payload: [index] });
+    aliases.slice().sort().should.eql(["test:8_10:ft:alias:one", "test:8_10:ft:alias:two"]);
+  });
+
+  it("FT.CREATE's LANGUAGE option accepts Malay and Tagalog, and their stemmers match inflected query forms", async function () {
+    skipIfUnsupported.call(this);
+    const cases = [
+      { language: "malay", prefix: "test:8_10:ft:ms:", word: "berjalan", query: "jalan" },
+      { language: "tagalog", prefix: "test:8_10:ft:tl:", word: "kumakain", query: "kain" },
+    ];
+    for (const { language, prefix, word, query } of cases) {
+      const index = `${prefix}idx`;
+      await invoke(helper, "ftcreate", {
+        payload: [
+          index,
+          "ON",
+          "HASH",
+          "PREFIX",
+          "1",
+          prefix,
+          "LANGUAGE",
+          language,
+          "SCHEMA",
+          "title",
+          "TEXT",
+        ],
+      });
+      await invoke(helper, "hset", { topic: `${prefix}1`, payload: ["title", word] });
+
+      const result = await invoke(helper, "ftsearch", { payload: [index, query] });
+      // ioredis's default legacy reply mapping flattens FT.SEARCH's RESP3 map reply to
+      // [key, value, key, value, ...]; FT.SEARCH has no dedicated reply transformer.
+      result[result.indexOf("total_results") + 1].should.equal(1);
+      const results = result[result.indexOf("results") + 1];
+      results[0][results[0].indexOf("id") + 1].should.equal(`${prefix}1`);
+    }
+  });
+
+  it("FT.AGGREGATE's COLLECT reducer keeps field/value pairs per collected record, unlike TOLIST's flat values", async function () {
+    skipIfUnsupported.call(this);
+    const index = "test:8_10:ft:collect:idx";
+    await invoke(helper, "ftcreate", {
+      payload: [
+        index,
+        "ON",
+        "HASH",
+        "PREFIX",
+        "1",
+        "test:8_10:ft:collect:doc:",
+        "SCHEMA",
+        "cat",
+        "TAG",
+        "val",
+        "NUMERIC",
+      ],
+    });
+    await invoke(helper, "hset", {
+      topic: "test:8_10:ft:collect:doc:1",
+      payload: ["cat", "a", "val", "1"],
+    });
+    await invoke(helper, "hset", {
+      topic: "test:8_10:ft:collect:doc:2",
+      payload: ["cat", "a", "val", "2"],
+    });
+
+    const collected = await invoke(helper, "ftaggregate", {
+      payload: [
+        index,
+        "*",
+        "GROUPBY",
+        "1",
+        "@cat",
+        "REDUCE",
+        "COLLECT",
+        "3",
+        "FIELDS",
+        "1",
+        "@val",
+        "AS",
+        "vals",
+      ],
+    });
+    const listed = await invoke(helper, "ftaggregate", {
+      payload: [index, "*", "GROUPBY", "1", "@cat", "REDUCE", "TOLIST", "1", "@val", "AS", "vals"],
+    });
+
+    // Every RESP3 map in the reply is flattened to [key, value, key, value, ...] by ioredis's
+    // default legacy reply mapping (module commands have no dedicated transformer); locate
+    // fields by name rather than assuming a fixed position.
+    function firstGroupVals(reply) {
+      const results = reply[reply.indexOf("results") + 1];
+      const group = results[0];
+      const extra = group[group.indexOf("extra_attributes") + 1];
+      return extra[extra.indexOf("vals") + 1];
+    }
+
+    firstGroupVals(collected)
+      .slice()
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .should.eql([
+        ["val", "1"],
+        ["val", "2"],
+      ]);
+    firstGroupVals(listed).slice().sort().should.eql(["1", "2"]);
+  });
+
+  it("CONFIG SET/GET deterministically accepts search-on-timeout's return, fail, and return-strict policies", async function () {
+    skipIfUnsupported.call(this);
+    const original = (await invoke(helper, "config", { payload: ["GET", "search-on-timeout"] }))[1];
+    try {
+      for (const policy of ["fail", "return-strict", "return"]) {
+        await invoke(helper, "config", { payload: ["SET", "search-on-timeout", policy] });
+        const current = await invoke(helper, "config", { payload: ["GET", "search-on-timeout"] });
+        current[1].should.equal(policy);
+      }
+    } finally {
+      await invoke(helper, "config", { payload: ["SET", "search-on-timeout", original] });
+    }
+  });
+});
+
+// Redis 8.10's JSONPath extensions (RedisJSON): projection expressions, literal array/object
+// comparisons, filter negation, size/sizeof/empty, in/nin, arithmetic operators, the ~
+// get-keys operator, and a family of new postfix functions. Redis parses JSONPath itself; this
+// table only proves each expression passes through the generic redis-command path byte-for-byte
+// and that Redis's own result comes back unchanged.
+describe("Redis 8.10 JSON module — JSONPath extensions (generic redis-command path)", function () {
+  this.timeout(8000);
+
+  let jsonSupported;
+  const KEY = "test:8_10:json:jsonpath";
+
+  before(async function () {
+    await new Promise((resolve, reject) =>
+      helper.startServer((err) => (err ? reject(err) : resolve()))
+    );
+    const probe = directRedis();
+    try {
+      jsonSupported = (await probe.call("COMMAND", "INFO", "JSON.SET"))[0] !== null;
+    } finally {
+      probe.disconnect();
+    }
+    await load(helper, redisNode, [
+      CONFIG,
+      commandNode("jsonset", "JSON.SET"),
+      helperNode("jsonset"),
+      commandNode("jsonget", "JSON.GET"),
+      helperNode("jsonget"),
+    ]);
+    if (jsonSupported) {
+      await invoke(helper, "jsonset", {
+        payload: [
+          KEY,
+          "$",
+          JSON.stringify({
+            a: 1,
+            s: "hello world",
+            x: "ab",
+            y: "cd",
+            absval: -5.7,
+            arr: [3, 1, 4, 1, 5, 9, 2, 6],
+            vals: [1, 2, 3, 4, 5],
+            allow: [2, 4],
+            strs: ["ab", "abc", "a"],
+            objs: [{ x: 1 }, { x: 1, y: 2 }],
+            obj: { x: 1, y: 2 },
+            items: [[1, 2], [3, 4], { x: 1 }, { y: 2 }],
+            sizearrs: [
+              [1, 2, 3],
+              [1, 2],
+              [1, 2, 3, 4],
+            ],
+            emptyish: [[], {}, "", [1], { x: 1 }, "a"],
+            nums: [{ n: -5 }, { n: 3 }, { n: 8 }],
+            divs: [{ n: 10, d: 4 }],
+            nested: [
+              { a: 1, b: 2, c: 3 },
+              { a: 1 },
+              { single: 42 },
+              { vals: [1, 2] },
+              { vals: [9, 9] },
+            ],
+          }),
+        ],
+      });
+      try {
+        jsonSupported =
+          JSON.stringify(
+            JSON.parse(
+              await invoke(helper, "jsonget", {
+                payload: [KEY, "$.a + 1"],
+              })
+            )
+          ) === "[2]";
+      } catch (err) {
+        if (err.name !== "ReplyError") {
+          throw err;
+        }
+        jsonSupported = false;
+      }
+    }
+  });
+
+  after(async function () {
+    await helper.unload();
+    await helper.stopServer();
+    await new Promise((resolve, reject) =>
+      cleanupKeys("test:8_10:json:*", (err) => (err ? reject(err) : resolve()))
+    );
+  });
+
+  function skipIfUnsupported() {
+    if (!jsonSupported) {
+      this.skip();
+    }
+  }
+
+  async function jsonPath(path) {
+    const result = await invoke(helper, "jsonget", { payload: [KEY, path] });
+    return JSON.parse(result);
+  }
+
+  async function assertPaths(cases) {
+    for (const [path, expected] of cases) {
+      (await jsonPath(path)).should.eql(expected);
+    }
+  }
+
+  it("supports a computed arithmetic expression as the entire top-level path", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([["$.a + 1", [2]]]);
+  });
+
+  it("== and != compare array and object literals directly", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.items[?(@ == [1,2])]", [[1, 2]]],
+      ['$.items[?(@ == {"x":1})]', [{ x: 1 }]],
+      ["$.items[?(@ != [1,2])]", [[3, 4], { x: 1 }, { y: 2 }]],
+    ]);
+  });
+
+  it("the ! filter negation operator", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([["$.arr[?(!(@ == 1))]", [3, 4, 5, 9, 2, 6]]]);
+  });
+
+  it("the size/sizeof operator on strings, arrays, and objects", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.strs[?(@ sizeof 2)]", ["ab"]],
+      ["$.sizearrs[?(@ size 3)]", [[1, 2, 3]]],
+      ["$.objs[?(@ sizeof 1)]", [{ x: 1 }]],
+    ]);
+  });
+
+  it("the empty operator", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.emptyish[?(@ empty true)]", [[], {}, ""]],
+      ["$.emptyish[?(@ empty false)]", [[1], { x: 1 }, "a"]],
+    ]);
+  });
+
+  it("the in and nin membership operators", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.vals[?(@ in [2,4])]", [2, 4]],
+      ["$.vals[?(@ in $.allow)]", [2, 4]],
+      ["$.vals[?(@ nin [2,4])]", [1, 3, 5]],
+    ]);
+  });
+
+  it("binary arithmetic operators (+, -, *, /, %)", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.nums[?(@.n + 1 == 4)]", [{ n: 3 }]],
+      ["$.nums[?(@.n - 1 == 2)]", [{ n: 3 }]],
+      ["$.nums[?(@.n * 2 == 16)]", [{ n: 8 }]],
+      ["$.divs[?(@.n / @.d == 2.5)]", [{ n: 10, d: 4 }]],
+      ["$.divs[?(@.n % @.d == 2)]", [{ n: 10, d: 4 }]],
+    ]);
+  });
+
+  it("unary arithmetic operators (-, +)", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.nums[?(-@.n == 5)]", [{ n: -5 }]],
+      ["$.nums[?(+@.n == -5)]", [{ n: -5 }]],
+    ]);
+  });
+
+  it("the ~ get-keys operator on objects", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([["$.obj~", ["x", "y"]]]);
+  });
+
+  it("length() on strings and arrays", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.s.length()", [11]],
+      ["$.arr.length()", [8]],
+    ]);
+  });
+
+  it("abs(), ceiling(), and floor() on numbers", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.absval.abs()", [5.7]],
+      ["$.absval.ceiling()", [-5]],
+      ["$.absval.floor()", [-6]],
+    ]);
+  });
+
+  it("match() and search() on strings", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ['$.s.match("hello.*")', [true]],
+      ['$.s.search("world")', [true]],
+    ]);
+  });
+
+  it("concat() joins strings", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([["$.x.concat($.y)", ["abcd"]]]);
+  });
+
+  it("first(), last(), and index() on arrays", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.arr.first()", [3]],
+      ["$.arr.last()", [6]],
+      ["$.arr.index(2)", [4]],
+      ["$.arr.index(-1)", [6]],
+    ]);
+  });
+
+  it("append() enriches the reply without mutating the stored document", async function () {
+    skipIfUnsupported.call(this);
+    // Unlike other path queries, append()'s reply is the single enriched array itself,
+    // not wrapped in JSONPath's usual multi-match outer array.
+    (await jsonPath("$.arr.append(9)")).should.eql([3, 1, 4, 1, 5, 9, 2, 6, 9]);
+    (await jsonPath("$.arr")).should.eql([[3, 1, 4, 1, 5, 9, 2, 6]]);
+  });
+
+  it("min(), max(), avg(), and sum() aggregate an array, and stddev() computes a close estimate", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.arr.min()", [1]],
+      ["$.arr.max()", [9]],
+      ["$.arr.avg()", [3.875]],
+      ["$.arr.sum()", [31]],
+    ]);
+    const stddev = (await jsonPath("$.arr.stddev()"))[0];
+    stddev.should.be.approximately(2.57, 0.1);
+  });
+
+  it("keys() on objects", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([["$.obj.keys()", ["x", "y"]]]);
+  });
+
+  it("count() on a nodelist, value() on a single-node nodelist, subsetof(), anyof(), and noneof()", async function () {
+    skipIfUnsupported.call(this);
+    await assertPaths([
+      ["$.nested[?(count(@.*) == 3)]", [{ a: 1, b: 2, c: 3 }]],
+      ["$.nested[?(value(@.single) == 42)]", [{ single: 42 }]],
+      ["$.nested[?(@.vals subsetof [1,2,3])]", [{ vals: [1, 2] }]],
+      ["$.nested[?(@.vals anyof [1,2,9])]", [{ vals: [1, 2] }, { vals: [9, 9] }]],
+      [
+        "$.nested[?(@.vals noneof [7,8])]",
+        [{ a: 1, b: 2, c: 3 }, { a: 1 }, { single: 42 }, { vals: [1, 2] }, { vals: [9, 9] }],
+      ],
+    ]);
+  });
+
+  it("returns Redis's JSONPath syntax errors unchanged", async function () {
+    skipIfUnsupported.call(this);
+    const path = "$.items[?(";
+    const nodeError = await expectError(helper, "jsonget", { payload: [KEY, path] });
+    const client = directRedis();
+    let directError;
+    try {
+      await client.call("JSON.GET", KEY, path);
+    } catch (err) {
+      directError = err;
+    } finally {
+      client.disconnect();
+    }
+
+    (directError instanceof Error).should.equal(true);
+    nodeError.message.should.equal(directError.message);
+
+    (await jsonPath("$.a")).should.eql([1]);
+    helper.getNode("jsonget-node").listenerCount("call:error").should.equal(0);
+    helper.getNode("jsonget-helper").listenerCount("input").should.equal(0);
+  });
+});
+
+// Redis 8.10 Time Series additions: TS.NRANGE/TS.NREVRANGE (multi-series pivot by timestamp),
+// TS.READ (immediate and blocking, dispatched with Block Commands for a dedicated connection),
+// TS.QUERYLABELS, and EXCLUDEEMPTY on TS.MRANGE/TS.MREVRANGE.
+describe("Redis 8.10 Time Series additions (generic redis-command path)", function () {
+  this.timeout(10000);
+
+  let tsSupported;
+
+  before(async function () {
+    await new Promise((resolve, reject) =>
+      helper.startServer((err) => (err ? reject(err) : resolve()))
+    );
+    const probe = directRedis();
+    try {
+      const infos = await probe.call(
+        "COMMAND",
+        "INFO",
+        "TS.NRANGE",
+        "TS.NREVRANGE",
+        "TS.READ",
+        "TS.QUERYLABELS"
+      );
+      tsSupported = infos.every((info) => info !== null);
+    } finally {
+      probe.disconnect();
+    }
+    await load(helper, redisNode, [
+      CONFIG,
+      commandNode("tscreate", "TS.CREATE"),
+      helperNode("tscreate"),
+      commandNode("tsadd", "TS.ADD"),
+      helperNode("tsadd"),
+      commandNode("tsnrange", "TS.NRANGE"),
+      helperNode("tsnrange"),
+      commandNode("tsnrevrange", "TS.NREVRANGE"),
+      helperNode("tsnrevrange"),
+      commandNode("tsread", "TS.READ"),
+      helperNode("tsread"),
+      commandNode("tsreadblock", "TS.READ", "config1", { block: true }),
+      helperNode("tsreadblock"),
+      commandNode("tsquerylabels", "TS.QUERYLABELS"),
+      helperNode("tsquerylabels"),
+      commandNode("tsmrange", "TS.MRANGE"),
+      helperNode("tsmrange"),
+      commandNode("tsmrevrange", "TS.MREVRANGE"),
+      helperNode("tsmrevrange"),
+    ]);
+  });
+
+  after(async function () {
+    await helper.unload();
+    await helper.stopServer();
+    await new Promise((resolve, reject) =>
+      cleanupKeys("test:8_10:ts:*", (err) => (err ? reject(err) : resolve()))
+    );
+  });
+
+  function skipIfUnsupported() {
+    if (!tsSupported) {
+      this.skip();
+    }
+  }
+
+  it("TS.NRANGE and TS.NREVRANGE pivot multiple series by timestamp", async function () {
+    skipIfUnsupported.call(this);
+    const keyA = "test:8_10:ts:nrange:a";
+    const keyB = "test:8_10:ts:nrange:b";
+    await invoke(helper, "tscreate", { topic: keyA });
+    await invoke(helper, "tscreate", { topic: keyB });
+    await invoke(helper, "tsadd", { payload: [keyA, "100", "1"] });
+    await invoke(helper, "tsadd", { payload: [keyA, "200", "2"] });
+    await invoke(helper, "tsadd", { payload: [keyB, "100", "10"] });
+    await invoke(helper, "tsadd", { payload: [keyB, "200", "20"] });
+
+    const forward = await invoke(helper, "tsnrange", { payload: ["2", keyA, keyB, "-", "+"] });
+    forward.should.eql([
+      [100, ["1", "10"]],
+      [200, ["2", "20"]],
+    ]);
+
+    const backward = await invoke(helper, "tsnrevrange", { payload: ["2", keyA, keyB, "-", "+"] });
+    backward.should.eql([
+      [200, ["2", "20"]],
+      [100, ["1", "10"]],
+    ]);
+  });
+
+  it("TS.READ returns samples at or after a timestamp immediately", async function () {
+    skipIfUnsupported.call(this);
+    const key = "test:8_10:ts:read:immediate";
+    await invoke(helper, "tscreate", { topic: key });
+    await invoke(helper, "tsadd", { payload: [key, "100", "1"] });
+    await invoke(helper, "tsadd", { payload: [key, "200", "2"] });
+
+    const result = await invoke(helper, "tsread", { payload: [key, "150"] });
+    result.should.eql([[200, "2"]]);
+  });
+
+  it("TS.QUERYLABELS lists label names and label values for series matching a filter", async function () {
+    skipIfUnsupported.call(this);
+    const keyA = "test:8_10:ts:labels:a";
+    const keyB = "test:8_10:ts:labels:b";
+    const client = directRedis();
+    try {
+      await client.call("TS.CREATE", keyA, "LABELS", "region", "us", "grp", "test:8_10:ts:labels");
+      await client.call("TS.CREATE", keyB, "LABELS", "region", "eu", "grp", "test:8_10:ts:labels");
+    } finally {
+      client.disconnect();
+    }
+
+    const labels = await invoke(helper, "tsquerylabels", {
+      payload: ["LABELS", "FILTER", "grp=test:8_10:ts:labels"],
+    });
+    labels.slice().sort().should.eql(["grp", "region"]);
+
+    const values = await invoke(helper, "tsquerylabels", {
+      payload: ["VALUES", "region", "FILTER", "grp=test:8_10:ts:labels"],
+    });
+    values.slice().sort().should.eql(["eu", "us"]);
+  });
+
+  it("EXCLUDEEMPTY on TS.MRANGE and TS.MREVRANGE drops series with no samples in range", async function () {
+    skipIfUnsupported.call(this);
+    const withSample = "test:8_10:ts:mrange:with-sample";
+    const withoutSample = "test:8_10:ts:mrange:without-sample";
+    const client = directRedis();
+    try {
+      await client.call("TS.CREATE", withSample, "LABELS", "grp", "test:8_10:ts:mrange");
+      await client.call("TS.CREATE", withoutSample, "LABELS", "grp", "test:8_10:ts:mrange");
+      await client.call("TS.ADD", withSample, "100", "5");
+    } finally {
+      client.disconnect();
+    }
+
+    for (const command of ["tsmrange", "tsmrevrange"]) {
+      const withEmpty = await invoke(helper, command, {
+        payload: ["-", "+", "FILTER", "grp=test:8_10:ts:mrange"],
+      });
+      withEmpty.should.containEql(withSample);
+      withEmpty.should.containEql(withoutSample);
+
+      const excludeEmpty = await invoke(helper, command, {
+        payload: ["-", "+", "EXCLUDEEMPTY", "FILTER", "grp=test:8_10:ts:mrange"],
+      });
+      excludeEmpty.should.containEql(withSample);
+      excludeEmpty.should.not.containEql(withoutSample);
+    }
+  });
+
+  it("BLOCK-ing TS.READ (Block Commands) resolves as soon as a qualifying sample arrives", async function () {
+    skipIfUnsupported.call(this);
+    const key = "test:8_10:ts:read:block:arrives";
+    await invoke(helper, "tscreate", { topic: key });
+
+    const pending = invoke(
+      helper,
+      "tsreadblock",
+      { payload: [key, "0", "BLOCK", "5000", "1"] },
+      6000
+    );
+    await waitForBlockedTsRead();
+    await invoke(helper, "tsadd", { payload: [key, "500", "42"] });
+
+    (await pending).should.eql([[500, "42"]]);
+  });
+
+  it("BLOCK-ing TS.READ resolves an empty array after its timeout when no sample ever arrives", async function () {
+    skipIfUnsupported.call(this);
+    this.timeout(8000);
+    const key = "test:8_10:ts:read:block:timeout";
+    await invoke(helper, "tscreate", { topic: key });
+
+    const result = await invoke(
+      helper,
+      "tsreadblock",
+      { payload: [key, "0", "BLOCK", "1000", "1"] },
+      5000
+    );
+    result.should.eql([]);
+  });
+
+  // Last in this suite on purpose: it unloads the flow early to time shutdown, so no
+  // later test in this describe block can depend on the flow still being loaded.
+  it("BLOCK-ing TS.READ (Block Commands) closes cleanly while still blocked on an empty series", async function () {
+    skipIfUnsupported.call(this);
+    this.timeout(8000);
+    const key = "test:8_10:ts:read:block:shutdown";
+    await invoke(helper, "tscreate", { topic: key });
+
+    helper.getNode("tsreadblock-node").receive({ payload: [key, "0", "BLOCK", "0", "1"] });
+
+    await waitForBlockedTsRead();
+    const started = Date.now();
+    await helper.unload();
+    (Date.now() - started).should.be.below(1000);
   });
 });
 

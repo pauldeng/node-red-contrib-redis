@@ -24,16 +24,26 @@ function invoke(helper, id, msg = {}, timeoutMs = 7000) {
   return new Promise((resolve, reject) => {
     const node = helper.getNode(`${id}-node`);
     const sink = helper.getNode(`${id}-helper`);
-    const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${id}`)), timeoutMs);
-
-    node.once("call:error", (call) => {
+    const cleanup = () => {
       clearTimeout(timer);
+      node.removeListener("call:error", onError);
+      sink.removeListener("input", onInput);
+    };
+    const onError = (call) => {
+      cleanup();
       reject(call.args[0]);
-    });
-    sink.once("input", (out) => {
-      clearTimeout(timer);
+    };
+    const onInput = (out) => {
+      cleanup();
       resolve(out.payload);
-    });
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${id}`));
+    }, timeoutMs);
+
+    node.on("call:error", onError);
+    sink.on("input", onInput);
 
     node.receive(msg);
   });
@@ -43,19 +53,26 @@ function expectError(helper, id, msg = {}, timeoutMs = 7000) {
   return new Promise((resolve, reject) => {
     const node = helper.getNode(`${id}-node`);
     const sink = helper.getNode(`${id}-helper`);
-    const timer = setTimeout(
-      () => reject(new Error(`Timed out waiting for ${id} error`)),
-      timeoutMs
-    );
-
-    node.once("call:error", (call) => {
+    const cleanup = () => {
       clearTimeout(timer);
+      node.removeListener("call:error", onError);
+      sink.removeListener("input", onInput);
+    };
+    const onError = (call) => {
+      cleanup();
       resolve(call.args[0]);
-    });
-    sink.once("input", (out) => {
-      clearTimeout(timer);
+    };
+    const onInput = (out) => {
+      cleanup();
       reject(new Error(`Expected ${id} to fail, got ${JSON.stringify(out.payload)}`));
-    });
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${id} error`));
+    }, timeoutMs);
+
+    node.on("call:error", onError);
+    sink.on("input", onInput);
 
     node.receive(msg);
   });
