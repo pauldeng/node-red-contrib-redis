@@ -303,6 +303,7 @@
       var node = this;
       var isSyncing = false;
       var optionsEditor = null;
+      var singleTcpFamily;
       var lastEnvOptions =
         this.optionsType === "env" ? $("#node-config-input-options").val() || "" : "";
       var redisConfigTabs = RED.tabs.create({
@@ -593,6 +594,9 @@
         } else {
           base.host = ($("#redis-config-single-host").val() || "127.0.0.1").trim();
           base.port = asNumber($("#redis-config-single-port").val(), 6379);
+          if (singleTcpFamily !== undefined) {
+            base.family = singleTcpFamily;
+          }
           tls = $("#redis-config-single-tls").is(":checked");
         }
         return applyOptionalConnectionOptions(base, {
@@ -755,6 +759,9 @@
         } else {
           options = options || {};
           var transport = options.path ? "unix" : "tcp";
+          if (transport === "tcp") {
+            singleTcpFamily = options.family;
+          }
           $("#redis-config-single-transport").val(transport);
           $("#redis-config-single-path").val(options.path || "");
           $("#redis-config-single-host").val(options.host || "127.0.0.1");
@@ -771,13 +778,18 @@
       }
 
       function updateSinglePathValidation() {
-        var transport = $("#redis-config-single-transport").val();
+        var active =
+          $("#redis-config-options-type").val() === "json" &&
+          $("#redis-config-mode").val() === "single" &&
+          $("#redis-config-single-transport").val() === "unix";
         var message = $("#redis-config-single-path-message");
-        if (transport !== "unix") {
-          message.text("").removeClass("redis-config-error");
-          return;
-        }
         var path = ($("#redis-config-single-path").val() || "").trim();
+        var valid = !active || !!path;
+        $("#node-config-dialog-ok").prop("disabled", !valid);
+        if (!active) {
+          message.text("").removeClass("redis-config-error");
+          return true;
+        }
         if (!path) {
           message.text("A socket path is required").addClass("redis-config-error");
         } else if (path[0] !== "/" && !/^[A-Za-z]:[\\/]/.test(path)) {
@@ -789,6 +801,7 @@
         } else {
           message.text("").removeClass("redis-config-error");
         }
+        return valid;
       }
 
       function updateVisibility() {
@@ -805,7 +818,6 @@
           $("#redis-config-single-" + transport + "-section")
             .addClass("redis-config-active-section")
             .show();
-          updateSinglePathValidation();
         }
         if (mode === "cluster") {
           if (provider === "cluster") {
@@ -834,6 +846,7 @@
           setListItems("#redis-config-sentinel-nodes", [], 26379);
         }
         updateConnectionEditability();
+        updateSinglePathValidation();
       }
 
       function updateConnectionEditability() {
@@ -898,6 +911,7 @@
         $(".redis-config-raw-only").toggle(type !== "json");
         $("#redis-config-prettify-options").toggle(type === "json");
         updateConnectionEditability();
+        updateSinglePathValidation();
         if (type !== "json") {
           $("#redis-config-options-raw-label").text(labels[type] || "Value");
           $("#redis-config-options-raw").attr("placeholder", placeholders[type] || "");
@@ -932,6 +946,10 @@
         var type = $("#redis-config-options-type").val() || "json";
         var options;
         if (type === "json") {
+          if (!updateSinglePathValidation()) {
+            setTestMessage(target, "error", "A socket path is required");
+            return null;
+          }
           syncConnectionToEditor();
           options = optionsEditor.getValue();
           try {
@@ -1344,6 +1362,7 @@
           removes the saved <code>path</code>, since ioredis gives <code>path</code> precedence
           over <code>host</code>/<code>port</code> whenever both are present. The Node-RED
           process (or its container) must be able to see and open the socket path; the
+          socket path is required before the configuration can be tested or saved. The
           underlying OS also caps how long a socket path can be (commonly just over 100
           characters), which surfaces as <code>EINVAL</code> rather than <code>ENOENT</code>.
       </dd>

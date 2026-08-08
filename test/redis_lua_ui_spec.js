@@ -318,7 +318,7 @@ describe("redis-config Single-mode Unix socket transport", function () {
     );
   });
 
-  it("cleanKnownSingleKeys strips path and family so stale keys never survive a transport switch", function () {
+  it("cleanKnownSingleKeys strips path and family from the transport-specific base", function () {
     assert.match(
       html,
       /function cleanKnownSingleKeys\(options\)[\s\S]*?\[\s*"host",\s*"port",\s*"family",\s*"username",\s*"password",\s*"db",\s*"tls",\s*"path",?\s*\]/,
@@ -363,7 +363,7 @@ describe("redis-config Single-mode Unix socket transport", function () {
     );
   });
 
-  it("requires a non-empty socket path and only recommends (not enforces) an absolute path", function () {
+  it("marks a blank socket path invalid and only recommends an absolute path", function () {
     assert.match(
       html,
       /function updateSinglePathValidation\(\)[\s\S]*?if \(!path\) \{[\s\S]*?required[\s\S]*?redis-config-error/,
@@ -379,7 +379,7 @@ describe("redis-config Single-mode Unix socket transport", function () {
   it("populateFormFromOptions detects Unix socket transport from a saved path", function () {
     assert.match(
       html,
-      /var transport = options\.path \? "unix" : "tcp";\s*\$\("#redis-config-single-transport"\)\.val\(transport\);/,
+      /var transport = options\.path \? "unix" : "tcp";[\s\S]*?\$\("#redis-config-single-transport"\)\.val\(transport\);/,
       "loading a saved config should select Unix socket when options.path is present, else TCP"
     );
   });
