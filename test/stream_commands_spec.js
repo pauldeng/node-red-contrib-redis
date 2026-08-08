@@ -2,6 +2,7 @@ const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
 const { redisConfigNode } = require("./helpers/deployment");
+const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
 
 helper.init(require.resolve("node-red"));
 
@@ -1217,5 +1218,120 @@ describe("Stream commands", function () {
         payload: ["*", "f1", "v1"],
       });
     });
+  });
+
+  // XREAD/XREADGROUP MAXCOUNT/MAXSIZE (Redis 8.10): MAXCOUNT caps the total entries returned
+  // across every requested stream (COUNT still caps entries per stream); MAXSIZE caps the
+  // total reply size in bytes. Both must keep preserving the legacy nested
+  // [[stream, [[id, fields]]]] shape under RESP3 (see CASE_SENSITIVE_TRANSFORM_COMMANDS).
+  it("XREAD MAXCOUNT caps the total entries across streams, combining with per-stream COUNT", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("xadd1", "XADD"),
+      helperNode("xadd1"),
+      commandNode("xadd2", "XADD"),
+      helperNode("xadd2"),
+      commandNode("xread", "XREAD"),
+      helperNode("xread"),
+    ]);
+
+    const s1 = "test:stream:maxcount:s1";
+    const s2 = "test:stream:maxcount:s2";
+    for (let i = 0; i < 3; i++) {
+      await invoke(helper, "xadd1", { topic: s1, payload: ["*", "f", "v" + i] });
+    }
+    for (let i = 0; i < 3; i++) {
+      await invoke(helper, "xadd2", { topic: s2, payload: ["*", "f", "v" + i] });
+    }
+
+    const result = await invoke(helper, "xread", {
+      payload: ["COUNT", "2", "MAXCOUNT", "3", "STREAMS", s1, s2, "0", "0"],
+    });
+
+    result.should.be.an.Array();
+    result.length.should.equal(2);
+    result[0][0].should.equal(s1);
+    result[0][1].should.be.an.Array();
+    result[0][1].length.should.equal(2);
+    result[1][0].should.equal(s2);
+    result[1][1].length.should.equal(1);
+  });
+
+  it("XREAD MAXSIZE truncates the reply while keeping the legacy shape", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("xadd", "XADD"),
+      helperNode("xadd"),
+      commandNode("xread", "XREAD"),
+      helperNode("xread"),
+    ]);
+
+    const key = "test:stream:maxsize:s1";
+    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v0"] });
+    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v1"] });
+
+    const result = await invoke(helper, "xread", {
+      payload: ["MAXSIZE", "1", "STREAMS", key, "0"],
+    });
+
+    result.should.be.an.Array();
+    result.length.should.equal(1);
+    result[0][0].should.equal(key);
+    result[0][1].should.be.an.Array();
+    result[0][1].length.should.equal(1);
+  });
+
+  it("XREADGROUP MAXCOUNT preserves the legacy shape for consumer-group reads", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("xadd", "XADD"),
+      helperNode("xadd"),
+      commandNode("xgroup", "XGROUP"),
+      helperNode("xgroup"),
+      commandNode("xreadgroup", "XREADGROUP"),
+      helperNode("xreadgroup"),
+    ]);
+
+    const key = "test:stream:maxcount:group:s1";
+    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v0"] });
+    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v1"] });
+    await invoke(helper, "xgroup", { payload: ["CREATE", key, "cg", "0"] });
+
+    const result = await invoke(helper, "xreadgroup", {
+      payload: ["GROUP", "cg", "consumer", "MAXCOUNT", "1", "STREAMS", key, ">"],
+    });
+
+    result.should.be.an.Array();
+    result.length.should.equal(1);
+    result[0][0].should.equal(key);
+    result[0][1].should.be.an.Array();
+    result[0][1].length.should.equal(1);
+  });
+
+  it("XREADGROUP combines COUNT and MAXSIZE while preserving the legacy shape", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("xadd", "XADD"),
+      helperNode("xadd"),
+      commandNode("xgroup", "XGROUP"),
+      helperNode("xgroup"),
+      commandNode("xreadgroup", "XREADGROUP"),
+      helperNode("xreadgroup"),
+    ]);
+
+    const key = "test:stream:maxsize:group:s1";
+    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v0"] });
+    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v1"] });
+    await invoke(helper, "xgroup", { payload: ["CREATE", key, "cg", "0"] });
+
+    const result = await invoke(helper, "xreadgroup", {
+      payload: ["GROUP", "cg", "consumer", "COUNT", "2", "MAXSIZE", "1", "STREAMS", key, ">"],
+    });
+
+    result.should.be.an.Array();
+    result.length.should.equal(1);
+    result[0][0].should.equal(key);
+    result[0][1].should.be.an.Array();
+    result[0][1].length.should.equal(1);
   });
 });

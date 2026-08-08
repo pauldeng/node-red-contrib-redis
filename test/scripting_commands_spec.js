@@ -1100,4 +1100,24 @@ describe("Scripting commands", function () {
       admin.disconnect();
     }
   });
+
+  // SCRIPT_RUNNER (Redis 8.10): a new COMMAND INFO flag marking commands that execute
+  // user-supplied scripts/functions. Purely informational -- confirm it's present without
+  // asserting anything about dispatch, catalog filtering, or Script/Function mode, since
+  // every other test in this file already proves those are unaffected.
+  it("EVAL/EVALSHA/FCALL and their read-only variants carry the new script_runner COMMAND INFO flag", async function () {
+    const client = directRedis();
+    try {
+      const names = ["EVAL", "EVALSHA", "EVAL_RO", "EVALSHA_RO", "FCALL", "FCALL_RO"];
+      const infos = await Promise.all(names.map((name) => client.call("COMMAND", "INFO", name)));
+      infos.forEach((info, i) => {
+        info[0][2].should.containEql(
+          "script_runner",
+          `${names[i]} should carry the script_runner flag`
+        );
+      });
+    } finally {
+      client.disconnect();
+    }
+  });
 });

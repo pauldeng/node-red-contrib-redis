@@ -157,7 +157,8 @@ Behavior:
 - `msg.topic` overrides the configured topic/key
 - `msg.payload` overrides static params when provided
 - static params come from JSON typedInput
-- `block` forces a dedicated connection id
+- `block` forces a dedicated connection id and force-disconnects it on shutdown so an
+  indefinitely blocked command cannot delay redeploy
 - non-blocking (shared) connections are pooled by the config node's **id** (`n.server`),
   never its display name — two config nodes with the same name (the default is `"Local"`)
   point at independent clients
@@ -211,6 +212,11 @@ It still accepts any command name, suggested or not — including newer Redis co
 Redis 8.10's `COMMAND LIST` (every supported command is either suggested or in the exclusion
 list, and nothing suggested is unsupported); a cheap no-Redis spot check of representative
 entries lives in `redis_lua_ui_spec.js`.
+
+Redis 8.10 adds a seventh element to each **SLOWLOG GET** entry: the original command's total
+argument count. Redis may truncate the argument array stored in the fourth element, so the new
+count can be larger than that array. `redis-command` passes the server reply through unchanged;
+older Redis versions continue returning their native six-element entries.
 
 Use this node for:
 

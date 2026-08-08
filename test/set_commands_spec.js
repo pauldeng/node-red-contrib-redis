@@ -2,6 +2,7 @@ const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
 const { redisConfigNode } = require("./helpers/deployment");
+const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
 
 helper.init(require.resolve("node-red"));
 
@@ -1225,5 +1226,63 @@ describe("Set commands", function () {
         payload: ["a", "b", "c"],
       });
     });
+  });
+
+  // SUNIONCARD/SDIFFCARD (Redis 8.10): count-only siblings of SUNION/SDIFF, sharing
+  // SINTERCARD's numkeys+LIMIT shape.
+  it("SUNIONCARD returns the union size, optionally capped by LIMIT", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("sadd1", "SADD"),
+      helperNode("sadd1"),
+      commandNode("sadd2", "SADD"),
+      helperNode("sadd2"),
+      commandNode("sunioncard", "SUNIONCARD"),
+      helperNode("sunioncard"),
+    ]);
+
+    await invoke(helper, "sadd1", { topic: "test:set:sunioncard:1", payload: ["a", "b", "c"] });
+    await invoke(helper, "sadd2", {
+      topic: "test:set:sunioncard:2",
+      payload: ["b", "c", "d", "e"],
+    });
+
+    const total = await invoke(helper, "sunioncard", {
+      payload: ["2", "test:set:sunioncard:1", "test:set:sunioncard:2"],
+    });
+    total.should.equal(5);
+
+    const limited = await invoke(helper, "sunioncard", {
+      payload: ["2", "test:set:sunioncard:1", "test:set:sunioncard:2", "LIMIT", "2"],
+    });
+    limited.should.equal(2);
+  });
+
+  it("SDIFFCARD returns the difference size, optionally capped by LIMIT", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("sadd1", "SADD"),
+      helperNode("sadd1"),
+      commandNode("sadd2", "SADD"),
+      helperNode("sadd2"),
+      commandNode("sdiffcard", "SDIFFCARD"),
+      helperNode("sdiffcard"),
+    ]);
+
+    await invoke(helper, "sadd1", {
+      topic: "test:set:sdiffcard:1",
+      payload: ["a", "b", "c", "d"],
+    });
+    await invoke(helper, "sadd2", { topic: "test:set:sdiffcard:2", payload: ["b", "c"] });
+
+    const total = await invoke(helper, "sdiffcard", {
+      payload: ["2", "test:set:sdiffcard:1", "test:set:sdiffcard:2"],
+    });
+    total.should.equal(2);
+
+    const limited = await invoke(helper, "sdiffcard", {
+      payload: ["2", "test:set:sdiffcard:1", "test:set:sdiffcard:2", "LIMIT", "1"],
+    });
+    limited.should.equal(1);
   });
 });

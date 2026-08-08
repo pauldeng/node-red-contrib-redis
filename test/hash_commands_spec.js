@@ -1,7 +1,8 @@
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
-const { redisConfigNode } = require("./helpers/deployment");
+const { directRedis, redisConfigNode } = require("./helpers/deployment");
+const { commandNode, expectError, helperNode, invoke, load } = require("./helpers/topology");
 
 helper.init(require.resolve("node-red"));
 
@@ -1523,5 +1524,81 @@ describe("Hash commands", function () {
         payload: ["f1", "v1", "f2", "v2"],
       });
     });
+  });
+
+  // HIMPORT (Redis 8.10) defines a session-local fieldset (PREPARE), then builds compact
+  // hashes from it (SET). The fieldset lives on the connection that prepared it, so PREPARE
+  // and SET must share a connection — both nodes below are non-block, so they pool onto the
+  // same client for this config (see docs/ARCHITECTURE.md's connection-id table).
+  it("HIMPORT PREPARE/SET builds a hash from a fieldset, preserving the flat-array HGETALL contract and binary-safe values", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("prepare", "HIMPORT"),
+      helperNode("prepare"),
+      commandNode("set", "HIMPORT"),
+      helperNode("set"),
+      commandNode("hgetall", "HGETALL"),
+      helperNode("hgetall"),
+    ]);
+
+    await invoke(helper, "prepare", {
+      payload: ["PREPARE", "test:hash:himport:fs", "f1", "f2", "f3"],
+    });
+
+    const binaryValue = Buffer.from([0, 1, 2, 255]);
+    await invoke(helper, "set", {
+      payload: ["SET", "test:hash:himport", "test:hash:himport:fs", "v1", "v2", binaryValue],
+    });
+
+    const flat = await invoke(helper, "hgetall", {
+      topic: "test:hash:himport",
+      payload: [],
+    });
+    flat.should.eql(["f1", "v1", "f2", "v2", "f3", binaryValue.toString()]);
+
+    const client = directRedis();
+    try {
+      const rawValue = await client.callBuffer("HGET", "test:hash:himport", "f3");
+      rawValue.should.eql(binaryValue);
+    } finally {
+      await client.call("DEL", "test:hash:himport");
+      client.disconnect();
+    }
+  });
+
+  it("HIMPORT SET fails once its fieldset has been discarded", async function () {
+    await load(helper, redisNode, [
+      configNode,
+      commandNode("prepare", "HIMPORT"),
+      helperNode("prepare"),
+      commandNode("discard", "HIMPORT"),
+      helperNode("discard"),
+      commandNode("set", "HIMPORT"),
+      helperNode("set"),
+    ]);
+
+    await invoke(helper, "prepare", { payload: ["PREPARE", "test:hash:himport:fs2", "f1"] });
+    await invoke(helper, "discard", { payload: ["DISCARD", "test:hash:himport:fs2"] });
+
+    const err = await expectError(helper, "set", {
+      payload: ["SET", "test:hash:himport2", "test:hash:himport:fs2", "v1"],
+    });
+    String(err).should.match(/no such fieldset/i);
+  });
+
+  it("HMSET keeps accepting an object payload on an ordinary hash", async function () {
+    await load(helper, redisNode, [configNode, commandNode("hmset", "HMSET"), helperNode("hmset")]);
+
+    await invoke(helper, "hmset", {
+      topic: "test:hash:hmset:ordinary",
+      payload: { f1: "v1", f2: "v2" },
+    });
+
+    const client = directRedis();
+    try {
+      (await client.hmget("test:hash:hmset:ordinary", "f1", "f2")).should.eql(["v1", "v2"]);
+    } finally {
+      client.disconnect();
+    }
   });
 });

@@ -11,6 +11,9 @@ All notable changes to this project are documented here. This project follows
   ioredis's default `legacy` reply mapping keeps existing Node-RED payload shapes stable (see
   Fixed, below, for the dispatch-side half of that). `redis-instance` exposes the ioredis v6
   client, a deliberate semver-major change to the raw client this package hands out.
+- **Redis 8.10 expands each `SLOWLOG GET` entry from six to seven elements.** The added final
+  element is the original command's total argument count, which can exceed the length of
+  Redis's truncated argument array. `redis-command` preserves this server-native reply.
 
 ### Added
 
@@ -48,6 +51,9 @@ All notable changes to this project are documented here. This project follows
   sent before the client was ready, permanently failing to subscribe. A `lazyConnect` client
   is started explicitly before waiting for `ready`. Every reconnect after the first is
   unaffected — ioredis's own re-subscription already covers it.
+- `redis-command` nodes with **Block Commands** enabled now force-disconnect their dedicated
+  client during shutdown instead of waiting for the graceful-QUIT fallback timeout behind an
+  indefinitely blocked command.
 
 ## [2.0.0] - 2026-07-26
 
