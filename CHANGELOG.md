@@ -14,12 +14,24 @@ All notable changes to this project are documented here. This project follows
 - **Redis 8.10 expands each `SLOWLOG GET` entry from six to seven elements.** The added final
   element is the original command's total argument count, which can exceed the length of
   Redis's truncated argument array. `redis-command` preserves this server-native reply.
+- **Redis 8.10 tightens three argument/ACL checks.** `SORT`, `GEORADIUS`,
+  `GEORADIUSBYMEMBER`, `XREAD`, and `XREADGROUP` now correctly enforce ACL key patterns (a
+  previous version's permission bypass on these five commands is fixed); `SET` now rejects
+  mutually exclusive `NX`/`XX`/`IF*` option combinations instead of accepting them; and
+  `VADD ... CAS SETATTR` now records the correct attribute count. `redis-command` surfaces
+  these server-native errors and results unchanged — a flow that relied on the old, looser
+  behavior may now see a `NOPERM` or `ERR syntax error` it didn't before.
 
 ### Added
 
 - Redis `8.10` is now the primary, tested target across every deployment in the test matrix
-  (previously Redis 8.8 for standalone, Redis 7.2 for Cluster/Sentinel). Formally supports
-  Redis `6.2.3+` and Valkey `7.2.5+` as the minimum versions.
+  (previously Redis 8.8 for standalone, Redis 7.2 for Cluster/Sentinel). Both Redis and Valkey
+  are now tested at their current `latest` release across every deployment shape (standalone
+  no-auth/auth, Cluster, Sentinel) — there is no pinned minimum-supported-version matrix.
+- A temporary, Unix-socket-only deployment (`single-unix`, TCP disabled) now exercises the
+  `redis-config` Unix socket transport end-to-end: the connection-test endpoint and a normal
+  `redis-command` round-trip over the socket path, in addition to the existing editor-level
+  Playwright coverage.
 - `redis-command` suggests ten new Redis 8.10 command roots: `HIMPORT`, `LMOVEM`, `BLMOVEM`,
   `SUNIONCARD`, `SDIFFCARD`, `FT.ALIASLIST`, `TS.NRANGE`, `TS.NREVRANGE`, `TS.READ`, and
   `TS.QUERYLABELS`. `BACKUP` is deliberately excluded from suggestions — every subcommand but

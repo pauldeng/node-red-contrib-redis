@@ -130,7 +130,9 @@ test.describe("Node-RED Redis editor", () => {
     });
   });
 
-  test("redis-config stores the password as a credential, not in the flow", async ({ page }) => {
+  test("redis-config stores credentials separately for TCP and Unix transports", async ({
+    page,
+  }) => {
     nodeRed = await startNodeRed(noauthOptions());
     await openEditor(page, nodeRed.url);
 
@@ -157,6 +159,19 @@ test.describe("Node-RED Redis editor", () => {
     // Reopen and confirm the password round-trips into the form.
     await openRedisConfig(page);
     await page.locator("#red-ui-tab-redis-config-tab-connection").click();
+    await expect(page.locator("#redis-config-single-password")).toHaveValue("super-secret-pw");
+    await setSelectValue(page, "#redis-config-single-transport", "unix");
+    await setInputValue(page, "#redis-config-single-path", "/tmp/redis.sock");
+    await saveConfigDialog(page);
+    await deploy(page);
+
+    const unixFlowsText = await (await page.request.get(nodeRed.url + "flows")).text();
+    expect(unixFlowsText).not.toContain("super-secret-pw");
+    expect(unixFlowsText).toContain("/tmp/redis.sock");
+
+    await openRedisConfig(page);
+    await expect(page.locator("#redis-config-single-transport")).toHaveValue("unix");
+    await expect(page.locator("#redis-config-single-path")).toHaveValue("/tmp/redis.sock");
     await expect(page.locator("#redis-config-single-password")).toHaveValue("super-secret-pw");
     await saveConfigDialog(page);
   });

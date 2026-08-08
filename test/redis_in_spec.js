@@ -3,6 +3,10 @@ const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
 const { directRedis, redisConfigNode } = require("./helpers/deployment");
+const {
+  waitForBlockedCommand,
+  waitForSubscription: waitForRedisSubscription,
+} = require("./helpers/wait");
 const Redis = require("ioredis");
 
 helper.init(require.resolve("node-red"));
@@ -11,6 +15,17 @@ const CONFIG = redisConfigNode("config1", "Local");
 
 function direct() {
   return directRedis();
+}
+
+function triggerWhenReady(ready, action, done) {
+  (async () => {
+    try {
+      await ready;
+      await action();
+    } catch (err) {
+      done(err);
+    }
+  })();
 }
 
 // Resolves the first time node.status() is called with a matching fill/text — used to
@@ -90,7 +105,11 @@ describe("redis-in node", function () {
         }
       });
 
-      setTimeout(() => c.rpush("test:in:blpop", "hello"), 150);
+      triggerWhenReady(
+        waitForBlockedCommand(c, "blpop"),
+        () => c.rpush("test:in:blpop", "hello"),
+        done
+      );
     });
   });
 
@@ -110,7 +129,11 @@ describe("redis-in node", function () {
         }
       });
 
-      setTimeout(() => c.rpush("test:in:blpop:json", JSON.stringify({ k: "v" })), 150);
+      triggerWhenReady(
+        waitForBlockedCommand(c, "blpop"),
+        () => c.rpush("test:in:blpop:json", JSON.stringify({ k: "v" })),
+        done
+      );
     });
   });
 
@@ -129,7 +152,11 @@ describe("redis-in node", function () {
         }
       });
 
-      setTimeout(() => c.rpush("test:in:blpop:fallback", "not-json"), 150);
+      triggerWhenReady(
+        waitForBlockedCommand(c, "blpop"),
+        () => c.rpush("test:in:blpop:fallback", "not-json"),
+        done
+      );
     });
   });
 
@@ -148,7 +175,11 @@ describe("redis-in node", function () {
         }
       });
 
-      setTimeout(() => c.rpush("test:in:blpop:key", "data"), 150);
+      triggerWhenReady(
+        waitForBlockedCommand(c, "blpop"),
+        () => c.rpush("test:in:blpop:key", "data"),
+        done
+      );
     });
   });
 
@@ -171,7 +202,11 @@ describe("redis-in node", function () {
       });
 
       // lpush so the element is at right (brpop pops from right)
-      setTimeout(() => c.lpush("test:in:brpop", "world"), 150);
+      triggerWhenReady(
+        waitForBlockedCommand(c, "brpop"),
+        () => c.lpush("test:in:brpop", "world"),
+        done
+      );
     });
   });
 
@@ -190,7 +225,11 @@ describe("redis-in node", function () {
         }
       });
 
-      setTimeout(() => c.lpush("test:in:brpop:json", JSON.stringify({ n: 42 })), 150);
+      triggerWhenReady(
+        waitForBlockedCommand(c, "brpop"),
+        () => c.lpush("test:in:brpop:json", JSON.stringify({ n: 42 })),
+        done
+      );
     });
   });
 
@@ -215,11 +254,14 @@ describe("redis-in node", function () {
         }
       });
 
-      // Pre-populate so brpop can immediately fire twice
-      setTimeout(() => {
-        c.rpush("test:in:brpop:multi", "a");
-        setTimeout(() => c.rpush("test:in:brpop:multi", "b"), 50);
-      }, 150);
+      triggerWhenReady(
+        waitForBlockedCommand(c, "brpop"),
+        async () => {
+          await c.rpush("test:in:brpop:multi", "a");
+          await c.rpush("test:in:brpop:multi", "b");
+        },
+        done
+      );
     });
   });
 
@@ -244,7 +286,11 @@ describe("redis-in node", function () {
           }
         });
 
-        setTimeout(() => c.publish("test:in:subscribe:ch", "hello sub"), 300);
+        triggerWhenReady(
+          waitForRedisSubscription(c, "test:in:subscribe:ch"),
+          () => c.publish("test:in:subscribe:ch", "hello sub"),
+          done
+        );
       }
     );
   });
@@ -268,7 +314,11 @@ describe("redis-in node", function () {
           }
         });
 
-        setTimeout(() => c.publish("test:in:subscribe:json", JSON.stringify({ x: 1 })), 300);
+        triggerWhenReady(
+          waitForRedisSubscription(c, "test:in:subscribe:json"),
+          () => c.publish("test:in:subscribe:json", JSON.stringify({ x: 1 })),
+          done
+        );
       }
     );
   });
@@ -291,7 +341,11 @@ describe("redis-in node", function () {
           }
         });
 
-        setTimeout(() => c.publish("test:in:subscribe:fallback", "plain-text"), 300);
+        triggerWhenReady(
+          waitForRedisSubscription(c, "test:in:subscribe:fallback"),
+          () => c.publish("test:in:subscribe:fallback", "plain-text"),
+          done
+        );
       }
     );
   });
@@ -318,11 +372,15 @@ describe("redis-in node", function () {
           }
         });
 
-        setTimeout(() => {
-          c.publish("test:in:subscribe:multi", "msg1");
-          c.publish("test:in:subscribe:multi", "msg2");
-          c.publish("test:in:subscribe:multi", "msg3");
-        }, 300);
+        triggerWhenReady(
+          waitForRedisSubscription(c, "test:in:subscribe:multi"),
+          async () => {
+            await c.publish("test:in:subscribe:multi", "msg1");
+            await c.publish("test:in:subscribe:multi", "msg2");
+            await c.publish("test:in:subscribe:multi", "msg3");
+          },
+          done
+        );
       }
     );
   });
@@ -349,7 +407,11 @@ describe("redis-in node", function () {
           }
         });
 
-        setTimeout(() => c.publish("test:in:ps:news", "event"), 300);
+        triggerWhenReady(
+          waitForRedisSubscription(c, "test:in:ps:*", true),
+          () => c.publish("test:in:ps:news", "event"),
+          done
+        );
       }
     );
   });
@@ -823,7 +885,11 @@ describe("redis-in node", function () {
         }
       });
 
-      setTimeout(() => c.zadd("test:in:bzpopmin:json", 3, JSON.stringify({ name: "job1" })), 150);
+      triggerWhenReady(
+        waitForBlockedCommand(c, "bzpopmin"),
+        () => c.zadd("test:in:bzpopmin:json", 3, JSON.stringify({ name: "job1" })),
+        done
+      );
     });
   });
 
@@ -872,7 +938,11 @@ describe("redis-in node", function () {
         }
       });
 
-      setTimeout(() => c.zadd("test:in:bzpopmax:float", 3.14, "pi-task"), 150);
+      triggerWhenReady(
+        waitForBlockedCommand(c, "bzpopmax"),
+        () => c.zadd("test:in:bzpopmax:float", 3.14, "pi-task"),
+        done
+      );
     });
   });
 
@@ -946,7 +1016,11 @@ describe("redis-in node", function () {
         }
       });
 
-      setTimeout(() => c.rpush("test:in:recover:blpop", "after-recovery"), 400);
+      triggerWhenReady(
+        waitForBlockedCommand(c, "blpop"),
+        () => c.rpush("test:in:recover:blpop", "after-recovery"),
+        done
+      );
     });
   });
 

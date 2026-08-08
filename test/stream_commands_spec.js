@@ -1,7 +1,8 @@
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
+const { isCallSyntaxSupported } = require("./helpers/capability");
 const { cleanupKeys } = require("./helpers/cleanup");
-const { redisConfigNode } = require("./helpers/deployment");
+const { directRedis, redisConfigNode } = require("./helpers/deployment");
 const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
 
 helper.init(require.resolve("node-red"));
@@ -1220,11 +1221,54 @@ describe("Stream commands", function () {
     });
   });
 
+  // XREADGROUP requires an existing group, so a bare isCallSyntaxSupported() probe against a
+  // nonexistent group would hit NOGROUP before the MAXCOUNT/MAXSIZE syntax is ever checked.
+  // Bootstrap a dedicated, empty probe stream/group (MKSTREAM) so the only possible outcomes
+  // are "syntax error" (unsupported) or a clean nil read (supported) — cleaned up by the
+  // existing `test:stream:*` afterEach pattern.
+  async function isXreadgroupOptionSupported(optionArgs) {
+    const probeKey = "test:stream:capability-probe:xreadgroup";
+    const client = directRedis();
+    try {
+      await client.call("XGROUP", "CREATE", probeKey, "probe-group", "0", "MKSTREAM");
+      await client.call(
+        "XREADGROUP",
+        "GROUP",
+        "probe-group",
+        "probe-consumer",
+        ...optionArgs,
+        "STREAMS",
+        probeKey,
+        ">"
+      );
+      return true;
+    } catch (err) {
+      if (/ERR syntax error/i.test(err.message)) {
+        return false;
+      }
+      throw err;
+    } finally {
+      client.disconnect();
+    }
+  }
+
   // XREAD/XREADGROUP MAXCOUNT/MAXSIZE (Redis 8.10): MAXCOUNT caps the total entries returned
   // across every requested stream (COUNT still caps entries per stream); MAXSIZE caps the
   // total reply size in bytes. Both must keep preserving the legacy nested
   // [[stream, [[id, fields]]]] shape under RESP3 (see CASE_SENSITIVE_TRANSFORM_COMMANDS).
   it("XREAD MAXCOUNT caps the total entries across streams, combining with per-stream COUNT", async function () {
+    if (
+      !(await isCallSyntaxSupported([
+        "XREAD",
+        "MAXCOUNT",
+        "1",
+        "STREAMS",
+        "test:stream:capability-probe:xread",
+        "0",
+      ]))
+    ) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("xadd1", "XADD"),
@@ -1258,6 +1302,18 @@ describe("Stream commands", function () {
   });
 
   it("XREAD MAXSIZE truncates the reply while keeping the legacy shape", async function () {
+    if (
+      !(await isCallSyntaxSupported([
+        "XREAD",
+        "MAXSIZE",
+        "1",
+        "STREAMS",
+        "test:stream:capability-probe:xread",
+        "0",
+      ]))
+    ) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("xadd", "XADD"),
@@ -1282,6 +1338,9 @@ describe("Stream commands", function () {
   });
 
   it("XREADGROUP MAXCOUNT preserves the legacy shape for consumer-group reads", async function () {
+    if (!(await isXreadgroupOptionSupported(["MAXCOUNT", "1"]))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("xadd", "XADD"),
@@ -1309,6 +1368,9 @@ describe("Stream commands", function () {
   });
 
   it("XREADGROUP combines COUNT and MAXSIZE while preserving the legacy shape", async function () {
+    if (!(await isXreadgroupOptionSupported(["COUNT", "2", "MAXSIZE", "1"]))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("xadd", "XADD"),

@@ -1,9 +1,10 @@
 # Testing
 
 This repository uses Mocha with `node-red-node-test-helper` for runtime coverage and
-Playwright for real Node-RED editor coverage. `npm test` manages Redis deployments with
-Docker so the Mocha suite can verify unauthenticated standalone, authenticated
-standalone, Redis Cluster, Redis Sentinel, and optional AWS MemoryDB behavior.
+Playwright for real Node-RED editor coverage. `npm test` manages Redis and Valkey
+deployments with Docker so the Mocha suite can verify unauthenticated standalone,
+authenticated standalone, Cluster, Sentinel, a Unix-socket-only deployment, and optional
+AWS MemoryDB behavior, against both engines.
 
 ## Prerequisite
 
@@ -28,26 +29,48 @@ Run all deployment tests:
 npm test
 ```
 
+Redis and Valkey are each tested at their current `:latest` release — there is no pinned
+minimum-supported-version matrix. The runner pulls each unique requested image once before
+starting deployments, then reuses that local image for the complete run. It verifies the
+expected engine and logs the resolved version from `INFO server` for every deployment, but does
+not fail on a specific version.
+
 The runner executes these deployments sequentially:
 
-- `single-noauth`: Redis 8.10.x image on `127.0.0.1:6379`; standalone Mocha specs. The runner
-  asserts `INFO server` reports exactly `8.10.x` before running the specs, so a stale local
-  image cannot silently downgrade the Redis 8.10 catalog suite to self-skipped coverage.
-- `single-auth`: Redis 8.10.x image on `127.0.0.1:6379` with ACL username/password; standalone
-  Mocha specs, with the same `8.10.x` version assertion.
-- `cluster-auth`: Redis 8.10 image, two authenticated Cluster masters with all slots assigned; topology specs plus Redis 7.2-supported cluster-prone command coverage.
-- `sentinel-auth`: Redis 8.10 image, three authenticated Redis data nodes plus three Sentinel processes; topology specs plus Redis 7.2-supported cluster-prone command coverage.
+- `single-noauth`: Redis image on `127.0.0.1:6379`; standalone Mocha specs.
+- `single-auth`: Redis image on `127.0.0.1:6379` with ACL username/password; the same
+  standalone Mocha specs as `single-noauth`, run again under authentication. This is
+  deliberately redundant with `single-noauth`: it protects against connection-keying and
+  credential-merge regressions that only manifest when a config carries auth options, across
+  the entire command surface, not just the auth-specific specs.
+- `cluster-auth`: Redis image, two authenticated Cluster masters with all slots assigned;
+  topology specs plus Redis 7.2-supported cluster-prone command coverage.
+- `sentinel-auth`: Redis image, three authenticated Redis data nodes plus three Sentinel
+  processes; topology specs plus Redis 7.2-supported cluster-prone command coverage.
+- `valkey-noauth`/`valkey-auth`: the same full standalone suite against Valkey, noauth and
+  authenticated. `valkey-cluster-auth` and `valkey-sentinel-auth` run the topology suites
+  against Valkey instead of Redis, reusing the exact same spec files (the Valkey Docker image
+  ships `redis-server`/`redis-cli`/`redis-sentinel` as symlinks to its own binaries, so no
+  command/entrypoint changes were needed). Redis-8.10-only cases (bundled modules, new
+  commands and command options, ACL/argument-validation fixes) self-skip on Valkey via a
+  `COMMAND INFO` or syntax-probe capability check — see `test/helpers/capability.js`. The
+  live `redis-command` datalist-vs-`COMMAND LIST` completeness audit (which expects an exact
+  match) self-skips on Valkey entirely, since Valkey doesn't bundle Redis's modules.
+- `single-unix`: a temporary Unix-socket-only deployment (TCP disabled, `port 0`) proving the
+  `redis-config` Unix socket transport end-to-end. The socket file lives in a host directory
+  created with `fs.mkdtempSync` and bind-mounted in for this one deployment, then removed
+  afterward — never committed to the repo.
 - `memorydb`: optional AWS MemoryDB topology specs when `MEMORYDB_ENABLED=1`.
 
-This primary matrix always enforces Redis 8.10 (the `single-noauth`/`single-auth` version
-assertion makes that a hard failure, not an advisory one). The project's minimum-supported-
-version commitment (Redis `6.2.3+` / Valkey `7.2.5+`) is a separate RESP3 support floor, not
-an alternate target for this matrix.
+Blocking and pub/sub tests wait for Redis-observable state (`CLIENT LIST` and `PUBSUB
+NUMSUB`/`NUMPAT`) before producing their test data. The short 25 ms intervals in those helpers
+are bounded polling, while longer timers are failure timeouts. This keeps the suite event-driven
+without making completion depend on a machine-specific sleep duration.
 
-All default images can be overridden with the `REDIS_STANDALONE_IMAGE` (single-noauth,
-single-auth, Playwright) and `REDIS_TOPOLOGY_IMAGE` (cluster-auth, sentinel-auth, Playwright)
-environment variables, which each deployment's `compose.yml` reads with a `redis:8.10-alpine`
-fallback. A standalone image override remains subject to the Redis `8.10.x` assertion.
+All default images can be overridden with the `REDIS_STANDALONE_IMAGE` / `REDIS_TOPOLOGY_IMAGE`
+(Redis deployments and Playwright) and `VALKEY_STANDALONE_IMAGE` / `VALKEY_TOPOLOGY_IMAGE`
+(Valkey deployments) environment variables, which each deployment's `compose.yml` reads with a
+`redis:latest` / `valkey/valkey:latest` fallback.
 
 Run the browser editor suite:
 
@@ -152,7 +175,8 @@ Command-family coverage, all driving `redis-command` through `client.call`:
 - Redis 8.10 core coverage stays in those matching command-family specs: `HIMPORT` and ordinary
   hash compatibility; `LMOVEM`/`BLMOVEM` ordering, timeout, and shutdown; `SUNIONCARD`/
   `SDIFFCARD`; `XREAD`/`XREADGROUP` `MAXCOUNT` and `MAXSIZE`; the `script_runner` metadata flag;
-  expanded `SLOWLOG GET` replies; and compact-hash metrics
+  expanded `SLOWLOG GET` replies; and compact-hash metrics. Each of these cases uses
+  `test/helpers/capability.js` to self-skip when run against Valkey (or an older Redis)
 - `scripting_commands_spec.js` additionally drives the `redis-lua-script` node directly for
   read-only (`EVAL_RO`/`EVALSHA_RO`), Function mode (`FCALL`/`FCALL_RO`, reload recovery), and
   block mode — including a server-side dedicated-connection proof that sets an ioredis
@@ -163,15 +187,19 @@ Command-family coverage, all driving `redis-command` through `client.call`:
   (`JSON.*`, `BF.*`, `CF.*`, `CMS.*`, `TOPK.*`, `TDIGEST.*`, `TS.*`), plus the safe `BACKUP HELP`
   path (`BACKUP`'s other subcommands are `@admin`/`@dangerous` and excluded from the datalist).
   It also covers Redis 8.10's Search additions, JSONPath expression families and native syntax
-  errors, and Time Series additions including blocking `TS.READ` shutdown and `EXCLUDEEMPTY` in
-  both range directions. Not an exhaustive per-command suite — the generic dispatch path plus
-  one case per family is the contract. Each case uses a command or syntax capability check when
-  the connected Redis doesn't support that feature, so those feature blocks also self-skip on
-  older or module-less Redis. The file also compares the live `redis-command` datalist with
+  errors, Time Series additions including blocking `TS.READ` shutdown and `EXCLUDEEMPTY` in
+  both range directions, and a regression suite for three Redis 8.10 bug fixes: the ACL
+  key-permission bypass on `SORT`/`GEORADIUS`/`GEORADIUSBYMEMBER`/`XREAD`/`XREADGROUP`, `SET`
+  rejecting mutually exclusive `NX`/`XX`/`IF*` options, and `VADD ... CAS SETATTR`'s attribute
+  count. Not an exhaustive per-command suite — the generic dispatch path plus one case per
+  family is the contract. Each case uses a command or syntax capability check when the
+  connected server doesn't support that feature, so those feature blocks also self-skip on
+  Valkey or an older Redis. The file also compares the live `redis-command` datalist with
   `COMMAND LIST`: every command the deployed Redis supports must be suggested or named in
   `DATALIST_EXCLUSIONS`, and every suggestion must be supported. That current-target audit
-  self-skips only when `COMMAND LIST` itself is unsupported (a pre-7.0 subcommand); it is not a
-  compatibility-floor check
+  self-skips when `COMMAND LIST` itself is unsupported (a pre-7.0 subcommand) or when the
+  connected server is Valkey (whose command catalog structurally lacks Redis's bundled
+  modules); it is not a compatibility-floor check
 - `ioredis_v6_characterization_spec.js` — characterization tests pinning the legacy
   (pre-ioredis-v6, RESP2-equivalent) reply shapes for `HRANDFIELD WITHVALUES`, `VSIM
 WITHSCORES`, `XREAD`, `XREADGROUP`, and the ten ioredis "sorted-set pair" commands, all sent
@@ -183,11 +211,17 @@ WITHSCORES`, `XREAD`, `XREADGROUP`, and the ten ioredis "sorted-set pair" comman
 
 Deployment topology coverage:
 
-- `redis_cluster_deployment_spec.js` — Redis Cluster auth, same-slot success, cross-slot failure,
+- `redis_cluster_deployment_spec.js` — Cluster auth, same-slot success, cross-slot failure,
   pub/sub, blocking list, Lua fallback, same-slot FCALL + read-only Lua, block-mode
-  Script/Function execution, Redis 7.2 cluster-prone commands, and Redis 8.10's RESP3
-  `FT.SEARCH LIMIT` regression
-- `redis_sentinel_deployment_spec.js` — Sentinel discovery/auth, pub/sub, blocking list, Lua, FCALL + read-only Lua, block-mode Script/Function with a `CLIENT LIST` dedicated-connection proof on the discovered master, failover/reconnect, Redis 7.2 cluster-prone commands
+  Script/Function execution, Redis 7.2 cluster-prone commands, `SUNIONCARD`/`SDIFFCARD`
+  same-slot/cross-slot coverage, and Redis 8.10's RESP3 `FT.SEARCH LIMIT` regression. Reused
+  verbatim for `valkey-cluster-auth` (gated by `REDIS_DEPLOYMENT`); the Redis-8.10-only cases
+  self-skip there via a `COMMAND INFO` capability check
+- `redis_sentinel_deployment_spec.js` — Sentinel discovery/auth, pub/sub, blocking list, Lua, FCALL + read-only Lua, block-mode Script/Function with a `CLIENT LIST` dedicated-connection proof on the discovered master, failover/reconnect, Redis 7.2 cluster-prone commands. Reused
+  verbatim for `valkey-sentinel-auth` (gated by `REDIS_DEPLOYMENT`)
+- `redis_unix_socket_deployment_spec.js` — the `single-unix` deployment: `redis-config`'s
+  connection-test endpoint and a normal `redis-command` round-trip over a Unix socket path,
+  with TCP disabled entirely (`port 0`)
 - `memorydb_deployment_spec.js` — opt-in AWS MemoryDB cluster/auth (JSON and env-var optionsType)/same-slot/cross-slot/Lua, read-only Lua + FCALL and block-mode coverage (gated on engine function support), and Redis 7.2 cluster-prone command coverage
 
 The block-mode server-side proof (counting `CLIENT LIST` entries by `connectionName`) runs in
@@ -201,7 +235,11 @@ Helpers:
 - `test/helpers/cleanup.js` — pattern cleanup for standalone deployments
 - `test/helpers/topology.js` — Node-RED flow invocation helpers for topology specs
 - `test/helpers/cluster-prone.js` — shared same-slot and cross-slot Redis 7.2 command matrix for Cluster, Sentinel, and MemoryDB
-- `test/helpers/wait.js` — polls a node property (e.g. `sha1`, `libname`) instead of guessing a fixed delay
+- `test/helpers/wait.js` — polls node properties and Redis client state (subscriptions and blocked commands) instead of guessing fixed delays
+- `test/helpers/capability.js` — `isCommandSupported(command)` (a `COMMAND INFO` check) and
+  `isCallSyntaxSupported(args)` (tries the call, treats a syntax error as "unsupported") for
+  self-skipping Redis-8.10-only test cases scattered across the command-family specs when run
+  against Valkey or an older Redis
 
 Browser editor coverage:
 

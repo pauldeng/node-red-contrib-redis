@@ -1,6 +1,6 @@
 services:
   redis:
-    image: ${REDIS_STANDALONE_IMAGE:-redis:latest}
+    image: ${VALKEY_STANDALONE_IMAGE:-valkey/valkey:latest}
     command:
       - redis-server
       - --bind

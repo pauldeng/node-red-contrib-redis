@@ -2,60 +2,30 @@
 
 const path = require("path");
 const fs = require("fs");
-const { spawnSync } = require("child_process");
+const os = require("os");
 const Redis = require("ioredis");
+const {
+  ROOT,
+  authEnv,
+  authOptions,
+  ensureDockerReady,
+  logServerVersion,
+  noauthOptions,
+  pullImages,
+  quietRedis,
+  runDeployments,
+  runMocha,
+  sleep,
+  unauthEnv,
+  waitForRedis,
+} = require("./deployment-runner");
 
-const ROOT = path.resolve(__dirname, "..");
-const MOCHA = path.join(ROOT, "node_modules", ".bin", "mocha");
-const AUTH_USERNAME = "node_red";
-const AUTH_PASSWORD = "node-red-pass";
 const TOPOLOGY_SPECS = new Set([
   "memorydb_deployment_spec.js",
   "redis_cluster_deployment_spec.js",
   "redis_sentinel_deployment_spec.js",
+  "redis_unix_socket_deployment_spec.js",
 ]);
-let DOCKER_COMMAND = ["docker"];
-
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: ROOT,
-    env: Object.assign({}, process.env, options.env || {}),
-    stdio: "inherit",
-  });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} exited with ${result.status}`);
-  }
-}
-
-function tryRun(command, args) {
-  const result = spawnSync(command, args, {
-    cwd: ROOT,
-    env: process.env,
-    stdio: "inherit",
-  });
-  return !result.error && result.status === 0;
-}
-
-function canRun(command, args) {
-  const result = spawnSync(command, args, {
-    cwd: ROOT,
-    env: process.env,
-    stdio: "ignore",
-  });
-  return !result.error && result.status === 0;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function quietRedis(client) {
-  client.on("error", () => {});
-  return client;
-}
 
 function standaloneSpecs() {
   return fs
@@ -63,117 +33,6 @@ function standaloneSpecs() {
     .filter((name) => /_spec\.js$/.test(name) && !TOPOLOGY_SPECS.has(name))
     .sort()
     .map((name) => `test/${name}`);
-}
-
-function dockerCompose(name, args) {
-  return [
-    "compose",
-    "-p",
-    `node-red-contrib-redis-${name}`,
-    "-f",
-    path.join("test", "deployments", name, "compose.yml"),
-    ...args,
-  ];
-}
-
-function runDocker(args) {
-  run(DOCKER_COMMAND[0], DOCKER_COMMAND.slice(1).concat(args));
-}
-
-function tryDocker(args) {
-  return tryRun(DOCKER_COMMAND[0], DOCKER_COMMAND.slice(1).concat(args));
-}
-
-function resolveDockerCommand() {
-  if (canRun("docker", ["info"]) && canRun("docker", ["compose", "version"])) {
-    return ["docker"];
-  }
-  if (
-    canRun("sudo", ["-n", "docker", "info"]) &&
-    canRun("sudo", ["-n", "docker", "compose", "version"])
-  ) {
-    return ["sudo", "-n", "docker"];
-  }
-  return ["docker"];
-}
-
-function authEnv(name) {
-  return {
-    REDIS_DEPLOYMENT: name,
-    REDIS_HOST: "127.0.0.1",
-    REDIS_PORT: "6379",
-    REDIS_USERNAME: AUTH_USERNAME,
-    REDIS_PASSWORD: AUTH_PASSWORD,
-  };
-}
-
-function unauthEnv(name) {
-  return {
-    REDIS_DEPLOYMENT: name,
-    REDIS_HOST: "127.0.0.1",
-    REDIS_PORT: "6379",
-  };
-}
-
-function authOptions(port = 6379) {
-  return {
-    host: "127.0.0.1",
-    port,
-    username: AUTH_USERNAME,
-    password: AUTH_PASSWORD,
-    connectTimeout: 500,
-    maxRetriesPerRequest: 1,
-    retryStrategy: null,
-  };
-}
-
-function noauthOptions(port = 6379) {
-  return {
-    host: "127.0.0.1",
-    port,
-    connectTimeout: 500,
-    maxRetriesPerRequest: 1,
-    retryStrategy: null,
-  };
-}
-
-async function waitForRedis(options, label) {
-  const deadline = Date.now() + 30000;
-  let lastError;
-  while (Date.now() < deadline) {
-    const client = quietRedis(new Redis(options));
-    try {
-      await client.ping();
-      client.disconnect();
-      return;
-    } catch (err) {
-      lastError = err;
-      client.disconnect();
-      await sleep(500);
-    }
-  }
-  throw new Error(`Timed out waiting for ${label}: ${lastError && lastError.message}`);
-}
-
-// The standalone stages run the Redis 8.10 command-catalog suite
-// (test/redis_8_10_commands_spec.js), whose per-command COMMAND INFO capability checks
-// self-skip silently on an older or module-less Redis. A stale local image (or an
-// unexpectedly overridden REDIS_STANDALONE_IMAGE) would otherwise produce a fully green but
-// misleading run where every 8.10-specific case was quietly skipped. Fail loudly instead.
-async function assertRedisVersion(options, expectedPrefix, label) {
-  const client = quietRedis(new Redis(options));
-  try {
-    const info = await client.call("INFO", "server");
-    const match = /redis_version:(\S+)/.exec(info);
-    const version = match ? match[1] : null;
-    if (!version || !version.startsWith(expectedPrefix)) {
-      throw new Error(
-        `${label}: expected Redis ${expectedPrefix}x, got ${version || "an unparsable INFO server reply"}`
-      );
-    }
-  } finally {
-    client.disconnect();
-  }
 }
 
 async function waitForCluster() {
@@ -194,7 +53,7 @@ async function waitForCluster() {
     client.disconnect();
     await sleep(500);
   }
-  throw new Error(`Timed out waiting for Redis Cluster: ${lastError && lastError.message}`);
+  throw new Error(`Timed out waiting for Cluster: ${lastError && lastError.message}`);
 }
 
 async function waitForSentinel() {
@@ -231,7 +90,7 @@ async function waitForSentinel() {
     sentinel.disconnect();
     await sleep(500);
   }
-  throw new Error(`Timed out waiting for Redis Sentinel: ${lastError && lastError.message}`);
+  throw new Error(`Timed out waiting for Sentinel: ${lastError && lastError.message}`);
 }
 
 function sentinelRowToObject(row) {
@@ -256,22 +115,28 @@ async function hasPromotableSentinelReplica(sentinel) {
   });
 }
 
-function runMocha(specs, env) {
-  run(MOCHA, specs, { env });
-}
+let unixSocketDir;
 
-async function runDeployment(deployment) {
-  console.log(`\n==> ${deployment.name}: starting Docker deployment`);
-  tryDocker(dockerCompose(deployment.name, ["down", "-v", "--remove-orphans"]));
-  try {
-    runDocker(dockerCompose(deployment.name, ["up", "-d"]));
-    await deployment.wait();
-    console.log(`==> ${deployment.name}: running tests`);
-    runMocha(deployment.specs, deployment.env);
-  } finally {
-    console.log(`==> ${deployment.name}: tearing down Docker deployment`);
-    tryDocker(dockerCompose(deployment.name, ["down", "-v", "--remove-orphans"]));
+async function waitForUnixSocket(socketPath) {
+  const deadline = Date.now() + 30000;
+  let lastError;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(socketPath)) {
+      const client = quietRedis(new Redis({ path: socketPath }));
+      try {
+        await client.ping();
+        client.disconnect();
+        return;
+      } catch (err) {
+        lastError = err;
+        client.disconnect();
+      }
+    }
+    await sleep(300);
   }
+  throw new Error(
+    `Timed out waiting for the Unix socket at ${socketPath}: ${lastError && lastError.message}`
+  );
 }
 
 function requireMemoryDbEnv() {
@@ -287,8 +152,13 @@ function requireMemoryDbEnv() {
 }
 
 async function main() {
-  run("bash", [path.join("scripts", "ensure-docker-ubuntu.sh")]);
-  DOCKER_COMMAND = resolveDockerCommand();
+  await ensureDockerReady();
+  pullImages([
+    process.env.REDIS_STANDALONE_IMAGE || "redis:latest",
+    process.env.REDIS_TOPOLOGY_IMAGE || "redis:latest",
+    process.env.VALKEY_STANDALONE_IMAGE || "valkey/valkey:latest",
+    process.env.VALKEY_TOPOLOGY_IMAGE || "valkey/valkey:latest",
+  ]);
 
   const deployments = [
     {
@@ -297,7 +167,7 @@ async function main() {
       specs: standaloneSpecs(),
       wait: async () => {
         await waitForRedis(noauthOptions(), "single-noauth Redis");
-        await assertRedisVersion(noauthOptions(), "8.10.", "single-noauth Redis");
+        await logServerVersion(noauthOptions(), "single-noauth", "Redis");
       },
     },
     {
@@ -306,7 +176,7 @@ async function main() {
       specs: standaloneSpecs(),
       wait: async () => {
         await waitForRedis(authOptions(), "single-auth Redis");
-        await assertRedisVersion(authOptions(), "8.10.", "single-auth Redis");
+        await logServerVersion(authOptions(), "single-auth", "Redis");
       },
     },
     {
@@ -315,7 +185,10 @@ async function main() {
         REDIS_CLUSTER_NODES: "127.0.0.1:7000,127.0.0.1:7001",
       }),
       specs: ["test/redis_cluster_deployment_spec.js"],
-      wait: waitForCluster,
+      wait: async () => {
+        await waitForCluster();
+        await logServerVersion(authOptions(7000), "cluster-auth", "Redis");
+      },
     },
     {
       name: "sentinel-auth",
@@ -324,13 +197,86 @@ async function main() {
         REDIS_SENTINEL_MASTER_NAME: "mymaster",
       }),
       specs: ["test/redis_sentinel_deployment_spec.js"],
-      wait: waitForSentinel,
+      wait: async () => {
+        await waitForSentinel();
+        await logServerVersion(authOptions(), "sentinel-auth", "Redis");
+      },
+    },
+    {
+      name: "valkey-noauth",
+      env: unauthEnv("valkey-noauth"),
+      specs: standaloneSpecs(),
+      wait: async () => {
+        await waitForRedis(noauthOptions(), "valkey-noauth");
+        await logServerVersion(noauthOptions(), "valkey-noauth", "Valkey");
+      },
+    },
+    {
+      name: "valkey-auth",
+      env: authEnv("valkey-auth"),
+      specs: standaloneSpecs(),
+      wait: async () => {
+        await waitForRedis(authOptions(), "valkey-auth");
+        await logServerVersion(authOptions(), "valkey-auth", "Valkey");
+      },
+    },
+    {
+      name: "valkey-cluster-auth",
+      env: Object.assign(authEnv("valkey-cluster-auth"), {
+        REDIS_CLUSTER_NODES: "127.0.0.1:7000,127.0.0.1:7001",
+      }),
+      specs: ["test/redis_cluster_deployment_spec.js"],
+      wait: async () => {
+        await waitForCluster();
+        await logServerVersion(authOptions(7000), "valkey-cluster-auth", "Valkey");
+      },
+    },
+    {
+      name: "valkey-sentinel-auth",
+      env: Object.assign(authEnv("valkey-sentinel-auth"), {
+        REDIS_SENTINELS: "127.0.0.1:26379,127.0.0.1:26380,127.0.0.1:26381",
+        REDIS_SENTINEL_MASTER_NAME: "mymaster",
+      }),
+      specs: ["test/redis_sentinel_deployment_spec.js"],
+      wait: async () => {
+        await waitForSentinel();
+        await logServerVersion(authOptions(), "valkey-sentinel-auth", "Valkey");
+      },
+    },
+    {
+      name: "single-unix",
+      env: { REDIS_DEPLOYMENT: "single-unix" },
+      specs: ["test/redis_unix_socket_deployment_spec.js"],
+      // The socket file needs a real shared filesystem path between the container and this
+      // host process (Unix sockets, unlike TCP ports, aren't reachable through Docker's
+      // network namespace) — a temporary directory bind-mounted in for this one deployment
+      // and removed again afterward, never committed to the repo.
+      before: async () => {
+        unixSocketDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-red-contrib-redis-unix-"));
+        fs.chmodSync(unixSocketDir, 0o777);
+        process.env.REDIS_UNIX_SOCKET_DIR = unixSocketDir;
+        process.env.REDIS_UNIX_SOCKET_PATH = path.join(unixSocketDir, "redis.sock");
+      },
+      wait: async () => {
+        await waitForUnixSocket(process.env.REDIS_UNIX_SOCKET_PATH);
+        await logServerVersion(
+          { path: process.env.REDIS_UNIX_SOCKET_PATH },
+          "single-unix",
+          "Redis"
+        );
+      },
+      after: async () => {
+        delete process.env.REDIS_UNIX_SOCKET_DIR;
+        delete process.env.REDIS_UNIX_SOCKET_PATH;
+        if (unixSocketDir) {
+          fs.rmSync(unixSocketDir, { recursive: true, force: true });
+          unixSocketDir = undefined;
+        }
+      },
     },
   ];
 
-  for (const deployment of deployments) {
-    await runDeployment(deployment);
-  }
+  await runDeployments(deployments);
 
   const memoryDbEnv = requireMemoryDbEnv();
   if (memoryDbEnv) {

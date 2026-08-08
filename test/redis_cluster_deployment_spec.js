@@ -4,7 +4,7 @@ const helper = require("node-red-node-test-helper");
 const Redis = require("ioredis");
 const redisNode = require("../redis.js");
 const { commandNode, expectError, helperNode, invoke, load } = require("./helpers/topology");
-const { waitForNodeProp } = require("./helpers/wait");
+const { waitForBlockedCommand, waitForNodeProp, waitForSubscription } = require("./helpers/wait");
 const {
   clusterProneFlow,
   runClusterProneCrossSlotFailures,
@@ -13,7 +13,12 @@ const {
 
 helper.init(require.resolve("node-red"));
 
-const describeCluster = process.env.REDIS_DEPLOYMENT === "cluster-auth" ? describe : describe.skip;
+// Reused verbatim for the Valkey cluster deployment (valkey-cluster-auth) — same bootstrap,
+// same ACL syntax, same ioredis.Cluster() client; only the underlying engine differs.
+const CLUSTER_DEPLOYMENTS = new Set(["cluster-auth", "valkey-cluster-auth"]);
+const describeCluster = CLUSTER_DEPLOYMENTS.has(process.env.REDIS_DEPLOYMENT)
+  ? describe
+  : describe.skip;
 
 function auth() {
   return {
@@ -228,10 +233,22 @@ describeCluster("Redis Cluster auth deployment", function () {
     });
   });
 
-  // SUNIONCARD/SDIFFCARD are Redis 8.10-only, so they stay out of the shared
-  // Redis-7.2-compatible cluster-prone matrix above (reused later by the minimum-version
-  // compatibility profile) and get their own same-slot/cross-slot coverage here.
+  // SUNIONCARD/SDIFFCARD are Redis 8.10-only (this describe block's cluster-prone matrix
+  // above is deliberately kept at the Redis 7.2-compatible command surface), so they get
+  // their own same-slot/cross-slot coverage here, gated on this cluster actually having them
+  // — this spec also runs against the Valkey cluster deployment, which does not.
   it("runs Redis 8.10 SUNIONCARD/SDIFFCARD with same-slot keys and rejects them cross-slot", async function () {
+    const probe = directCluster();
+    let supported;
+    try {
+      supported = (await probe.call("COMMAND", "INFO", "SUNIONCARD"))[0] !== null;
+    } finally {
+      probe.disconnect();
+    }
+    if (!supported) {
+      this.skip();
+    }
+
     await load(
       helper,
       redisNode,
@@ -382,7 +399,13 @@ describeCluster("Redis Cluster auth deployment", function () {
         resolve(msg);
       });
     });
-    setTimeout(() => helper.getNode("pub-out").receive({ payload: "hello" }), 300);
+    const pubsubClient = directCluster();
+    try {
+      await waitForSubscription(pubsubClient, channel);
+    } finally {
+      pubsubClient.disconnect();
+    }
+    helper.getNode("pub-out").receive({ payload: "hello" });
     const received = await subMessage;
     received.topic.should.equal(channel);
     received.payload.should.equal("hello");
@@ -395,9 +418,9 @@ describeCluster("Redis Cluster auth deployment", function () {
       });
     });
     const cluster = directCluster();
-    setTimeout(() => {
-      cluster.rpush(listKey, "queued").finally(() => cluster.disconnect());
-    }, 300);
+    await waitForBlockedCommand(cluster, "blpop");
+    await cluster.rpush(listKey, "queued");
+    cluster.disconnect();
     const popped = await popMessage;
     popped.topic.should.equal(listKey);
     popped.payload.should.equal("queued");

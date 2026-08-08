@@ -55,6 +55,13 @@ function runDocker(args) {
   run(DOCKER_COMMAND[0], DOCKER_COMMAND.slice(1).concat(args));
 }
 
+function pullImages(images) {
+  for (const image of new Set(images.filter(Boolean))) {
+    console.log(`==> pulling ${image}`);
+    runDocker(["pull", image]);
+  }
+}
+
 function tryDocker(args) {
   const result = spawnSync(DOCKER_COMMAND[0], DOCKER_COMMAND.slice(1).concat(args), {
     cwd: ROOT,
@@ -166,6 +173,10 @@ async function main() {
 
   run("bash", [path.join("scripts", "ensure-docker-ubuntu.sh")]);
   DOCKER_COMMAND = resolveDockerCommand();
+  pullImages([
+    process.env.REDIS_STANDALONE_IMAGE || "redis:latest",
+    process.env.REDIS_TOPOLOGY_IMAGE || "redis:latest",
+  ]);
 
   console.log("\n==> playwright-editor: starting Docker deployment");
   tryDocker(dockerCompose(["down", "-v", "--remove-orphans"]));

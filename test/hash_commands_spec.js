@@ -1,5 +1,6 @@
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
+const { isCommandSupported } = require("./helpers/capability");
 const { cleanupKeys } = require("./helpers/cleanup");
 const { directRedis, redisConfigNode } = require("./helpers/deployment");
 const { commandNode, expectError, helperNode, invoke, load } = require("./helpers/topology");
@@ -1531,6 +1532,9 @@ describe("Hash commands", function () {
   // and SET must share a connection — both nodes below are non-block, so they pool onto the
   // same client for this config (see docs/ARCHITECTURE.md's connection-id table).
   it("HIMPORT PREPARE/SET builds a hash from a fieldset, preserving the flat-array HGETALL contract and binary-safe values", async function () {
+    if (!(await isCommandSupported("HIMPORT"))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("prepare", "HIMPORT"),
@@ -1567,6 +1571,9 @@ describe("Hash commands", function () {
   });
 
   it("HIMPORT SET fails once its fieldset has been discarded", async function () {
+    if (!(await isCommandSupported("HIMPORT"))) {
+      this.skip();
+    }
     await load(helper, redisNode, [
       configNode,
       commandNode("prepare", "HIMPORT"),
