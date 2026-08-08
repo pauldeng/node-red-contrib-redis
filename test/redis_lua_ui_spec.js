@@ -416,8 +416,8 @@ describe("redis-command UI template", function () {
   });
 
   // Cheap, no-Redis spot check of a few representative entries. The full derived-set
-  // comparison against a live Redis 8.8's COMMAND LIST lives in
-  // test/redis_8_8_data_types_spec.js ("datalist vs. live COMMAND LIST").
+  // comparison against a live Redis 8.10's COMMAND LIST lives in
+  // test/redis_8_10_commands_spec.js ("datalist vs. live COMMAND LIST").
   it("spot-checks a few representative datalist entries: no retired module commands, includes new Redis 8.8 commands", function () {
     assert.match(
       templateBlock,
@@ -448,6 +448,30 @@ describe("redis-command UI template", function () {
         cmd + " (new in Redis 8.8) should be suggested"
       );
     });
+    // Representative new-in-8.10 commands.
+    [
+      "HIMPORT",
+      "LMOVEM",
+      "BLMOVEM",
+      "SUNIONCARD",
+      "SDIFFCARD",
+      "FT.ALIASLIST",
+      "TS.NRANGE",
+      "TS.NREVRANGE",
+      "TS.READ",
+      "TS.QUERYLABELS",
+    ].forEach(function (cmd) {
+      assert.match(
+        templateBlock,
+        new RegExp('value="' + cmd.replace(".", "\\.") + '"'),
+        cmd + " (new in Redis 8.10) should be suggested"
+      );
+    });
+    assert.doesNotMatch(
+      templateBlock,
+      /value="BACKUP"/,
+      "BACKUP is @admin/@dangerous on every subcommand but HELP and must not be suggested"
+    );
     // Still-active module families named in the hardening plan must be retained.
     ["BF.", "CF.", "CMS.", "JSON.", "TDIGEST.", "TOPK.", "TS."].forEach(function (prefix) {
       assert.match(

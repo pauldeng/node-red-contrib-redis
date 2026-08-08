@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 
-// Commands present on this Redis 8.8 deployment (per COMMAND LIST) that are deliberately
+// Commands present on this Redis 8.10 deployment (per COMMAND LIST) that are deliberately
 // NOT suggested in the redis-command datalist. Each entry names the concrete reason so a
 // future audit can tell an intentional omission from a stale one at a glance. Categorized
 // by the server's own ACL categories (`COMMAND INFO <name>`) and command semantics, not by
@@ -13,6 +13,9 @@ const DATALIST_EXCLUSIONS = new Set([
   // meaningless through a shared pooled connection (several already excluded pre-dating
   // this project; see commit dc9124f).
   "ASKING",
+  "BACKUP", // ACL categories @admin @dangerous on every subcommand but HELP; server-side
+  // backup lifecycle (START/SEAL/ABORT/CLEANUP/STATUS/LIST) has no place beside application
+  // commands. Still fully callable by typing BACKUP into the free-text command field.
   "DEBUG",
   "FAILOVER",
   "FLUSHALL",
@@ -45,7 +48,8 @@ const DATALIST_EXCLUSIONS = new Set([
   "FT._DROPINDEXIFX",
   "_FT.CONFIG", // ACL category @admin
   "_FT.CURSOR",
-  "_FT.DEBUG", // ACL category @admin @dangerous
+  "_FT.DEBUG", // ACL category @admin @dangerous; Redis 8.10 adds an internal subcommand
+  // under this already-excluded root, so no new top-level entry is needed
   "SEARCH.CLUSTERINFO", // internal cluster coordination, not a user command
   "SEARCH.CLUSTERREFRESH",
   "SEARCH.CLUSTERSET",
@@ -53,20 +57,20 @@ const DATALIST_EXCLUSIONS = new Set([
   "TIMESERIES.REFRESHCLUSTER",
 ]);
 
-// Representative generic-command coverage for Redis 8.8 data-type families not covered by
+// Representative generic-command coverage for Redis 8.10 data-type families not covered by
 // any existing command-family spec: the Array type, Vector Sets, and the probabilistic/search
 // modules (JSON, Bloom, Cuckoo, Count-Min Sketch, Top-K, t-digest, Time Series) that ship
-// bundled in the standalone `redis:8.8-alpine` image, plus two new standalone commands
+// bundled in the standalone `redis:8.10-alpine` image, plus two new standalone commands
 // (INCREX, XNACK). This intentionally does not add one test per catalog command — the
 // generic `redis-command` dispatch path plus one representative case per family is the
 // contract (see docs/TESTING.md).
 //
 // This file is NOT in the topology-spec exclusion list in scripts/run-deployment-tests.js,
-// so the deployment runner only ever includes it in the standalone (single-noauth/single-auth,
-// Redis 8.8) stages — it never runs against the Redis 7.2 cluster/sentinel images, where these
-// commands and modules do not exist. For local `npm run test:mocha` iteration against an older
-// or module-less Redis, every family (core commands and module-backed ones alike) still
-// self-skips via a `COMMAND INFO` capability check.
+// so the deployment runner only ever includes it in the standalone (single-noauth/single-auth)
+// stages — the Cluster and Sentinel topology stages run their own dedicated spec instead. For
+// local `npm run test:mocha` iteration against an older or module-less Redis, every family
+// (core commands and module-backed ones alike) still self-skips via a `COMMAND INFO`
+// capability check.
 
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
@@ -101,7 +105,7 @@ function buildFlow() {
   return flow;
 }
 
-describe("Redis 8.8 data-type families (generic redis-command path)", function () {
+describe("Redis 8.10 data-type families (generic redis-command path)", function () {
   this.timeout(8000);
 
   let supportedCommands;
@@ -131,7 +135,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
     await helper.unload();
     await helper.stopServer();
     await new Promise((resolve, reject) =>
-      cleanupKeys("test:8_8:*", (err) => (err ? reject(err) : resolve()))
+      cleanupKeys("test:8_10:*", (err) => (err ? reject(err) : resolve()))
     );
   });
 
@@ -143,7 +147,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("ARSET/ARGET — sets and reads a value at an index in an Array", async function () {
     skipIfCommandMissing.call(this, "ARSET");
-    const key = "test:8_8:array";
+    const key = "test:8_10:array";
     await invoke(helper, "array", { topic: key, payload: [0, "hello"] });
 
     const client = directRedis();
@@ -156,7 +160,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("VADD/VSIM — adds a vector-set element and finds it by similarity", async function () {
     skipIfCommandMissing.call(this, "VADD");
-    const key = "test:8_8:vectorset";
+    const key = "test:8_10:vectorset";
     await invoke(helper, "vectorset", { payload: [key, "VALUES", 3, 1, 2, 3, "elem1"] });
 
     const client = directRedis();
@@ -170,7 +174,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("INCREX — increments a key and sets its expiration atomically", async function () {
     skipIfCommandMissing.call(this, "INCREX");
-    const key = "test:8_8:increx";
+    const key = "test:8_10:increx";
     const result = await invoke(helper, "increx", { topic: key, payload: ["BYINT", 5, "EX", 60] });
     parseFloat(result).should.equal(5);
 
@@ -184,7 +188,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("XNACK — releases a claimed stream message back to the group's PEL", async function () {
     skipIfCommandMissing.call(this, "XNACK");
-    const key = "test:8_8:xnack:stream";
+    const key = "test:8_10:xnack:stream";
     const client = directRedis();
     try {
       await client.xadd(key, "*", "field", "value");
@@ -211,7 +215,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("JSON.SET/JSON.GET — stores and retrieves a JSON document", async function () {
     skipIfCommandMissing.call(this, "JSON.SET");
-    const key = "test:8_8:json";
+    const key = "test:8_10:json";
     await invoke(helper, "json", { payload: [key, "$", JSON.stringify({ a: 1 })] });
 
     const client = directRedis();
@@ -225,7 +229,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("BF.RESERVE/BF.ADD/BF.EXISTS — Bloom filter membership", async function () {
     skipIfCommandMissing.call(this, "BF.RESERVE");
-    const key = "test:8_8:bloom";
+    const key = "test:8_10:bloom";
     await invoke(helper, "bloom", { payload: [key, "0.01", "1000"] });
 
     const client = directRedis();
@@ -239,7 +243,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("CF.RESERVE/CF.ADD/CF.EXISTS — Cuckoo filter membership", async function () {
     skipIfCommandMissing.call(this, "CF.RESERVE");
-    const key = "test:8_8:cuckoo";
+    const key = "test:8_10:cuckoo";
     await invoke(helper, "cuckoo", { payload: [key, "1000"] });
 
     const client = directRedis();
@@ -253,7 +257,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("CMS.INITBYDIM/CMS.INCRBY/CMS.QUERY — Count-Min Sketch frequency estimate", async function () {
     skipIfCommandMissing.call(this, "CMS.INITBYDIM");
-    const key = "test:8_8:cms";
+    const key = "test:8_10:cms";
     await invoke(helper, "cms", { payload: [key, "1000", "5"] });
 
     const client = directRedis();
@@ -267,7 +271,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("TOPK.RESERVE/TOPK.ADD/TOPK.QUERY — Top-K frequent items", async function () {
     skipIfCommandMissing.call(this, "TOPK.RESERVE");
-    const key = "test:8_8:topk";
+    const key = "test:8_10:topk";
     await invoke(helper, "topk", { payload: [key, "10"] });
 
     const client = directRedis();
@@ -281,7 +285,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("TDIGEST.CREATE/TDIGEST.ADD/TDIGEST.QUANTILE — t-digest percentile estimate", async function () {
     skipIfCommandMissing.call(this, "TDIGEST.CREATE");
-    const key = "test:8_8:tdigest";
+    const key = "test:8_10:tdigest";
     await invoke(helper, "tdigest", { payload: [key] });
 
     const client = directRedis();
@@ -296,7 +300,7 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
 
   it("TS.CREATE/TS.ADD/TS.GET — Time Series data point", async function () {
     skipIfCommandMissing.call(this, "TS.CREATE");
-    const key = "test:8_8:timeseries";
+    const key = "test:8_10:timeseries";
     await invoke(helper, "timeseries", { topic: key });
 
     const client = directRedis();
@@ -306,6 +310,46 @@ describe("Redis 8.8 data-type families (generic redis-command path)", function (
       parseFloat(point[1]).should.equal(42);
     } finally {
       client.disconnect();
+    }
+  });
+});
+
+// BACKUP is deliberately excluded from the datalist (DATALIST_EXCLUSIONS above) because every
+// subcommand but HELP is ACL @admin @dangerous. Cover only the safe, read-only HELP path here —
+// never a backup lifecycle mutation (START/SEAL/ABORT/CLEANUP) — while confirming the command
+// itself still dispatches normally through the generic redis-command path when typed explicitly.
+describe("BACKUP (Redis 8.10 admin command, excluded from datalist suggestions)", function () {
+  this.timeout(8000);
+
+  before(async function () {
+    await new Promise((resolve, reject) =>
+      helper.startServer((err) => (err ? reject(err) : resolve()))
+    );
+  });
+
+  after(async function () {
+    await helper.stopServer();
+  });
+
+  it("BACKUP HELP returns help text through the generic command path", async function () {
+    const probe = directRedis();
+    let supported;
+    try {
+      supported = (await probe.call("COMMAND", "INFO", "BACKUP"))[0] !== null;
+    } finally {
+      probe.disconnect();
+    }
+    if (!supported) {
+      this.skip();
+    }
+
+    await load(helper, redisNode, [CONFIG, commandNode("backup", "BACKUP"), helperNode("backup")]);
+    try {
+      const result = await invoke(helper, "backup", { payload: ["HELP"] });
+      result.should.be.an.Array();
+      result[0].should.match(/BACKUP/);
+    } finally {
+      await helper.unload();
     }
   });
 });

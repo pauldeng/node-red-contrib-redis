@@ -1,6 +1,6 @@
 services:
   redis:
-    image: ${REDIS_STANDALONE_IMAGE:-redis:8.8-alpine}
+    image: ${REDIS_STANDALONE_IMAGE:-redis:8.10-alpine}
     command:
       - redis-server
       - /usr/local/etc/redis/redis.conf

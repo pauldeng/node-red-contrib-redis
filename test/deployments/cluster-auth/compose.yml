@@ -1,6 +1,6 @@
 services:
   redis-7000:
-    image: ${REDIS_TOPOLOGY_IMAGE:-redis:7.2-alpine}
+    image: ${REDIS_TOPOLOGY_IMAGE:-redis:8.10-alpine}
     network_mode: host
     command:
       - redis-server
@@ -10,7 +10,7 @@ services:
       - redis-7000-data:/data
 
   redis-7001:
-    image: ${REDIS_TOPOLOGY_IMAGE:-redis:7.2-alpine}
+    image: ${REDIS_TOPOLOGY_IMAGE:-redis:8.10-alpine}
     network_mode: host
     command:
       - redis-server
@@ -20,7 +20,7 @@ services:
       - redis-7001-data:/data
 
   cluster-init:
-    image: ${REDIS_TOPOLOGY_IMAGE:-redis:7.2-alpine}
+    image: ${REDIS_TOPOLOGY_IMAGE:-redis:8.10-alpine}
     network_mode: host
     depends_on:
       - redis-7000

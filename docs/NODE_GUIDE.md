@@ -198,18 +198,19 @@ transformer this node deliberately bypasses, returning a flat array instead of a
 sent with whatever case was saved.
 
 The **Command** field is a free-text input backed by a `<datalist>` of suggestions derived
-from the Redis 8.8 command catalog (retired RedisAI/RedisGraph/RedisGears entries removed;
+from the Redis 8.10 command catalog (retired RedisAI/RedisGraph/RedisGears entries removed;
 administrative, replication, connection-lifecycle, and destructive commands such as
-`FLUSHALL`, `SHUTDOWN`, `QUIT`, and `FT.DROPINDEX` are deliberately not suggested — see the
-`DATALIST_EXCLUSIONS` list in `../test/redis_8_8_data_types_spec.js` for the exact,
+`FLUSHALL`, `SHUTDOWN`, `QUIT`, `FT.DROPINDEX`, and `BACKUP` are deliberately not suggested —
+see the `DATALIST_EXCLUSIONS` list in `../test/redis_8_10_commands_spec.js` for the exact,
 reasoned set, mostly identified by the server's own `@admin`/`@dangerous` ACL categories).
-It still accepts any command name, suggested or not — including new Redis 8.8 commands
-(`INCREX`, `XNACK`, the Array family `AR*`, Vector Sets `V*`) and bundled-module commands
-(`JSON.*`, `BF.*`, `CF.*`, `CMS.*`, `TOPK.*`, `TDIGEST.*`, `TS.*`) — via the same generic
-`client.call(command, ...)` dispatch. `redis_8_8_data_types_spec.js` also runs a
-full-coverage check against a live Redis 8.8's `COMMAND LIST` (every supported command is
-either suggested or in the exclusion list, and nothing suggested is unsupported); a cheap
-no-Redis spot check of representative entries lives in `redis_lua_ui_spec.js`.
+It still accepts any command name, suggested or not — including newer Redis commands
+(`INCREX`, `XNACK`, `HIMPORT`, `LMOVEM`/`BLMOVEM`, `SUNIONCARD`/`SDIFFCARD`, the Array family
+`AR*`, Vector Sets `V*`) and bundled-module commands (`JSON.*`, `BF.*`, `CF.*`, `CMS.*`,
+`TOPK.*`, `TDIGEST.*`, `TS.*`, `FT.ALIASLIST`) — via the same generic `client.call(command,
+...)` dispatch. `redis_8_10_commands_spec.js` also runs a full-coverage check against a live
+Redis 8.10's `COMMAND LIST` (every supported command is either suggested or in the exclusion
+list, and nothing suggested is unsupported); a cheap no-Redis spot check of representative
+entries lives in `redis_lua_ui_spec.js`.
 
 Use this node for:
 
@@ -222,7 +223,7 @@ Use this node for:
 Read before editing:
 
 - `../test/redis_command_spec.js`
-- `../test/redis_8_8_data_types_spec.js`
+- `../test/redis_8_10_commands_spec.js`
 - `../test/stream_commands_spec.js`
 - `../test/redis_status_spec.js`
 
