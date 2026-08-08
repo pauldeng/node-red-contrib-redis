@@ -442,7 +442,10 @@
           return copy;
         }
         Object.keys(options || {}).forEach(function (key) {
-          if (["host", "port", "username", "password", "db", "tls"].indexOf(key) === -1) {
+          if (
+            ["host", "port", "family", "username", "password", "db", "tls", "path"].indexOf(key) ===
+            -1
+          ) {
             copy[key] = options[key];
           }
         });
@@ -583,13 +586,20 @@
 
       function buildSingleOptions(existing) {
         var base = cleanKnownSingleKeys(existing || {});
-        base.host = ($("#redis-config-single-host").val() || "127.0.0.1").trim();
-        base.port = asNumber($("#redis-config-single-port").val(), 6379);
+        var transport = $("#redis-config-single-transport").val();
+        var tls = false;
+        if (transport === "unix") {
+          base.path = ($("#redis-config-single-path").val() || "").trim();
+        } else {
+          base.host = ($("#redis-config-single-host").val() || "127.0.0.1").trim();
+          base.port = asNumber($("#redis-config-single-port").val(), 6379);
+          tls = $("#redis-config-single-tls").is(":checked");
+        }
         return applyOptionalConnectionOptions(base, {
           username: $("#redis-config-single-username").val(),
           password: $("#redis-config-single-password").val(),
           db: $("#redis-config-single-db").val(),
-          tls: $("#redis-config-single-tls").is(":checked"),
+          tls: tls,
         });
       }
 
@@ -744,6 +754,9 @@
           );
         } else {
           options = options || {};
+          var transport = options.path ? "unix" : "tcp";
+          $("#redis-config-single-transport").val(transport);
+          $("#redis-config-single-path").val(options.path || "");
           $("#redis-config-single-host").val(options.host || "127.0.0.1");
           $("#redis-config-single-port").val(options.port || 6379);
           $("#redis-config-single-username").val(options.username || "");
@@ -757,6 +770,27 @@
         updateVisibility();
       }
 
+      function updateSinglePathValidation() {
+        var transport = $("#redis-config-single-transport").val();
+        var message = $("#redis-config-single-path-message");
+        if (transport !== "unix") {
+          message.text("").removeClass("redis-config-error");
+          return;
+        }
+        var path = ($("#redis-config-single-path").val() || "").trim();
+        if (!path) {
+          message.text("A socket path is required").addClass("redis-config-error");
+        } else if (path[0] !== "/" && !/^[A-Za-z]:[\\/]/.test(path)) {
+          message
+            .text(
+              "An absolute path is recommended (relative paths resolve against the runtime's working directory)"
+            )
+            .removeClass("redis-config-error");
+        } else {
+          message.text("").removeClass("redis-config-error");
+        }
+      }
+
       function updateVisibility() {
         var mode = $("#redis-config-mode").val();
         var provider = $("#redis-config-cluster-provider").val();
@@ -766,6 +800,13 @@
         $("#redis-config-" + mode + "-section")
           .addClass("redis-config-active-section")
           .show();
+        if (mode === "single") {
+          var transport = $("#redis-config-single-transport").val();
+          $("#redis-config-single-" + transport + "-section")
+            .addClass("redis-config-active-section")
+            .show();
+          updateSinglePathValidation();
+        }
         if (mode === "cluster") {
           if (provider === "cluster") {
             $("#redis-config-cluster-manual-section")
@@ -983,7 +1024,7 @@
       }
       redisConfigTabs.activateTab(initialTabId);
 
-      $("#redis-config-mode, #redis-config-cluster-provider").on(
+      $("#redis-config-mode, #redis-config-cluster-provider, #redis-config-single-transport").on(
         "change input click keyup",
         function () {
           updateVisibility();
@@ -995,6 +1036,7 @@
         "change keyup",
         syncConnectionToEditor
       );
+      $("#redis-config-single-path").on("change input keyup", updateSinglePathValidation);
       $("#redis-config-options-type").on("change", function () {
         if ($("#node-config-input-optionsType").val() === "env") {
           lastEnvOptions = $("#redis-config-options-raw").val();
@@ -1109,12 +1151,35 @@
 
               <div id="redis-config-single-section" class="redis-config-mode-section">
                   <div class="form-row">
-                      <label for="redis-config-single-host"><i class="fa fa-globe"></i> Host</label>
-                      <input type="text" id="redis-config-single-host" class="redis-config-input" placeholder="127.0.0.1">
+                      <label for="redis-config-single-transport"><i class="fa fa-plug"></i> Transport</label>
+                      <select id="redis-config-single-transport" class="redis-config-mode-select">
+                          <option value="tcp">TCP</option>
+                          <option value="unix">Unix socket</option>
+                      </select>
                   </div>
-                  <div class="form-row">
-                      <label for="redis-config-single-port"><i class="fa fa-sign-in"></i> Port</label>
-                      <input type="number" id="redis-config-single-port" class="redis-config-small-input" placeholder="6379" min="0">
+                  <div id="redis-config-single-tcp-section" class="redis-config-provider-section">
+                      <div class="form-row">
+                          <label for="redis-config-single-host"><i class="fa fa-globe"></i> Host</label>
+                          <input type="text" id="redis-config-single-host" class="redis-config-input" placeholder="127.0.0.1">
+                      </div>
+                      <div class="form-row">
+                          <label for="redis-config-single-port"><i class="fa fa-sign-in"></i> Port</label>
+                          <input type="number" id="redis-config-single-port" class="redis-config-small-input" placeholder="6379" min="0">
+                      </div>
+                      <div class="form-row">
+                          <label for="redis-config-single-tls"><i class="fa fa-shield"></i> Security</label>
+                          <input type="checkbox" id="redis-config-single-tls" class="redis-config-checkbox">
+                          <span>Use TLS</span>
+                      </div>
+                  </div>
+                  <div id="redis-config-single-unix-section" class="redis-config-provider-section">
+                      <div class="form-row">
+                          <label for="redis-config-single-path"><i class="fa fa-hdd-o"></i> Socket Path</label>
+                          <input type="text" id="redis-config-single-path" class="redis-config-input" placeholder="/run/redis/redis.sock" required>
+                      </div>
+                      <div class="form-row">
+                          <span id="redis-config-single-path-message" class="redis-config-inline-message"></span>
+                      </div>
                   </div>
                   <div class="form-row">
                       <label for="redis-config-single-username"><i class="fa fa-user"></i> Username</label>
@@ -1129,11 +1194,6 @@
                   <div class="form-row">
                       <label for="redis-config-single-db"><i class="fa fa-database"></i> Logical DB</label>
                       <input type="number" id="redis-config-single-db" class="redis-config-small-input" min="0" placeholder="index">
-                  </div>
-                  <div class="form-row">
-                      <label for="redis-config-single-tls"><i class="fa fa-shield"></i> Security</label>
-                      <input type="checkbox" id="redis-config-single-tls" class="redis-config-checkbox">
-                      <span>Use TLS</span>
                   </div>
               </div>
 
@@ -1272,11 +1332,20 @@
       <dd>
           Provides common fields and keeps the saved connection options in sync:
           <ul>
-              <li><strong>Single</strong>: host, port, optional ACL username/password, logical database, and TLS.</li>
+              <li><strong>Single</strong>: a <strong>Transport</strong> of <strong>TCP</strong>
+              (host, port, TLS) or <strong>Unix socket</strong> (a local socket path), plus
+              shared optional ACL username/password and logical database.</li>
               <li><strong>Redis Cluster</strong>: one or more startup nodes, each with optional ACL username/password and TLS.</li>
               <li><strong>AWS MemoryDB / ElastiCache</strong>: a cluster configuration endpoint with optional ACL username/password. TLS is enabled for this provider.</li>
               <li><strong>Sentinel</strong>: Sentinel master name plus Sentinel endpoints. Endpoint username/password/TLS fields become <code>sentinelUsername</code>, <code>sentinelPassword</code>, and <code>sentinelTLS</code>.</li>
           </ul>
+          <strong>Unix socket</strong> is local-standalone only &mdash; not offered for Cluster,
+          Sentinel, or alongside TLS. Switching a Single connection back to <strong>TCP</strong>
+          removes the saved <code>path</code>, since ioredis gives <code>path</code> precedence
+          over <code>host</code>/<code>port</code> whenever both are present. The Node-RED
+          process (or its container) must be able to see and open the socket path; the
+          underlying OS also caps how long a socket path can be (commonly just over 100
+          characters), which surfaces as <code>EINVAL</code> rather than <code>ENOENT</code>.
       </dd>
       <dt>ConnString</dt>
       <dd>
@@ -1310,6 +1379,7 @@
               <li><code>{"host": "redis", "port": 6379, "username": "default", "password": "secret"}</code></li>
               <li><code>{"host": "redis", "port": 6380, "tls": {}}</code> &mdash; TLS</li>
               <li><code>{"host": "redis", "db": 2}</code> &mdash; select database 2</li>
+              <li><code>{"path": "/run/redis/redis.sock"}</code> &mdash; Unix socket</li>
               <li><code>{"sentinels":[{"host":"sentinel","port":26379}],"name":"mymaster"}</code> &mdash; Sentinel</li>
               <li><code>[{"host":"node1","port":6379},{"host":"node2","port":6379}]</code> &mdash; Redis Cluster startup nodes</li>
           </ul>
