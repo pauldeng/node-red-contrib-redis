@@ -358,7 +358,30 @@ describe("BACKUP (Redis 8.10 admin command, excluded from datalist suggestions)"
 // reports (root name only, subcommands collapsed) must be either suggested or explicitly
 // named in DATALIST_EXCLUSIONS above — no unreviewed gaps, no stale suggestions the server
 // doesn't recognize. Complements (does not replace) the cheap no-Redis spot checks in
-// test/redis_lua_ui_spec.js.
+// test/redis_lua_ui_spec.js. Self-skips when COMMAND LIST itself is unsupported (pre-7.0
+// Redis), since this audit is scoped to the current-feature target, not the compatibility
+// floor.
+function isUnsupportedCommandListError(err) {
+  return (
+    err instanceof Error &&
+    /Unknown subcommand or wrong number of arguments for ['"]LIST['"]/i.test(err.message)
+  );
+}
+
+describe("COMMAND LIST capability detection", function () {
+  it("recognizes the pre-7.0 unsupported-subcommand reply", function () {
+    isUnsupportedCommandListError(
+      new Error("ERR Unknown subcommand or wrong number of arguments for 'LIST'. Try COMMAND HELP.")
+    ).should.equal(true);
+  });
+
+  it("does not hide unrelated Redis or transport failures", function () {
+    [new Error("NOPERM this user has no permissions"), new Error("connect ECONNRESET")].forEach(
+      (err) => isUnsupportedCommandListError(err).should.equal(false)
+    );
+  });
+});
+
 describe("redis-command datalist vs. live COMMAND LIST", function () {
   this.timeout(8000);
 
@@ -366,7 +389,19 @@ describe("redis-command datalist vs. live COMMAND LIST", function () {
     const client = directRedis();
     let liveRoots;
     try {
-      const list = await client.call("COMMAND", "LIST");
+      // COMMAND LIST is a Redis 7.0+ subcommand; older servers (e.g. the 6.2.3 minimum-version
+      // profile) reject it with "Unknown subcommand". Self-skip there rather than failing —
+      // this audit is scoped to the current-feature (Redis 8.10) target, not the compatibility
+      // floor.
+      let list;
+      try {
+        list = await client.call("COMMAND", "LIST");
+      } catch (err) {
+        if (!isUnsupportedCommandListError(err)) {
+          throw err;
+        }
+        this.skip();
+      }
       liveRoots = new Set(list.map((name) => name.split("|")[0].toUpperCase()));
     } finally {
       client.disconnect();

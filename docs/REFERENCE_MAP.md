@@ -62,8 +62,8 @@ Command-family coverage (all drive `redis-command` via `client.call`):
   Redis data-type families with no existing family spec, plus the safe `BACKUP HELP` path and
   the live `redis-command` datalist-vs-`COMMAND LIST` completeness check; each case self-skips
   via `COMMAND INFO` when the connected Redis lacks that command. This is the primary,
-  current-feature target (`redis:8.10-alpine`); see `../docs/TESTING.md` for the separate
-  minimum-version compatibility profile
+  current-feature target (`redis:8.10-alpine`); the minimum Redis/Valkey versions are a
+  separate RESP3 support floor, not alternate primary-matrix targets
 - `../test/ioredis_v6_characterization_spec.js` — pins the legacy (pre-v6, RESP2-equivalent)
   reply shapes for `HRANDFIELD WITHVALUES`, `VSIM WITHSCORES`, `XREAD`, `XREADGROUP`, and the
   ten ioredis "sorted-set pair" commands (`zdiff`/`zinter`/`zpopmax`/`zpopmin`/`zunion`/

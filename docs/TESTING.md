@@ -30,19 +30,24 @@ npm test
 
 The runner executes these deployments sequentially:
 
-- `single-noauth`: Redis 8.10+ image on `127.0.0.1:6379`; standalone Mocha specs. The runner
-  asserts `INFO server` reports Redis `8.10.x` before running the specs, so a stale local
+- `single-noauth`: Redis 8.10.x image on `127.0.0.1:6379`; standalone Mocha specs. The runner
+  asserts `INFO server` reports exactly `8.10.x` before running the specs, so a stale local
   image cannot silently downgrade the Redis 8.10 catalog suite to self-skipped coverage.
-- `single-auth`: Redis 8.10+ image on `127.0.0.1:6379` with ACL username/password; standalone
+- `single-auth`: Redis 8.10.x image on `127.0.0.1:6379` with ACL username/password; standalone
   Mocha specs, with the same `8.10.x` version assertion.
 - `cluster-auth`: Redis 8.10 image, two authenticated Cluster masters with all slots assigned; topology specs plus Redis 7.2-supported cluster-prone command coverage.
 - `sentinel-auth`: Redis 8.10 image, three authenticated Redis data nodes plus three Sentinel processes; topology specs plus Redis 7.2-supported cluster-prone command coverage.
 - `memorydb`: optional AWS MemoryDB topology specs when `MEMORYDB_ENABLED=1`.
 
+This primary matrix always enforces Redis 8.10 (the `single-noauth`/`single-auth` version
+assertion makes that a hard failure, not an advisory one). The project's minimum-supported-
+version commitment (Redis `6.2.3+` / Valkey `7.2.5+`) is a separate RESP3 support floor, not
+an alternate target for this matrix.
+
 All default images can be overridden with the `REDIS_STANDALONE_IMAGE` (single-noauth,
 single-auth, Playwright) and `REDIS_TOPOLOGY_IMAGE` (cluster-auth, sentinel-auth, Playwright)
 environment variables, which each deployment's `compose.yml` reads with a `redis:8.10-alpine`
-fallback.
+fallback. A standalone image override remains subject to the Redis `8.10.x` assertion.
 
 Run the browser editor suite:
 
@@ -158,7 +163,9 @@ HELP` path (`BACKUP`'s other subcommands are `@admin`/`@dangerous` and excluded 
   connected Redis doesn't support that command, so the file is also safe to run manually
   against an older or module-less Redis. Also hosts the live `redis-command` datalist-vs-
   `COMMAND LIST` completeness check (every command this deployed Redis supports must be either
-  suggested or in `DATALIST_EXCLUSIONS`, and nothing suggested must be unsupported)
+  suggested or in `DATALIST_EXCLUSIONS`, and nothing suggested must be unsupported); that check
+  self-skips too when `COMMAND LIST` itself is unsupported (a pre-7.0 subcommand), since it is
+  scoped to the current-feature target rather than the compatibility floor
 - `ioredis_v6_characterization_spec.js` — characterization tests pinning the legacy
   (pre-ioredis-v6, RESP2-equivalent) reply shapes for `HRANDFIELD WITHVALUES`, `VSIM
 WITHSCORES`, `XREAD`, `XREADGROUP`, and the ten ioredis "sorted-set pair" commands, all sent
