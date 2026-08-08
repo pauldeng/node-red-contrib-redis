@@ -160,16 +160,18 @@ Command-family coverage, all driving `redis-command` through `client.call`:
   (non-block nodes must pool onto one connection; each block node must add its own)
 - `redis_8_10_commands_spec.js` — one representative test per Redis data-type family with no
   existing spec home: the Array type, Vector Sets, `INCREX`, `XNACK`, and the bundled modules
-  (`JSON.*`, `BF.*`, `CF.*`, `CMS.*`, `TOPK.*`, `TDIGEST.*`, `TS.*`), plus the safe `BACKUP
-HELP` path (`BACKUP`'s other subcommands are `@admin`/`@dangerous` and excluded from the
-  datalist). Not an exhaustive per-command suite — the generic dispatch path plus one case per
-  family is the contract. Each case self-skips via a `COMMAND INFO` capability check when the
-  connected Redis doesn't support that command, so the file is also safe to run manually
-  against an older or module-less Redis. Also hosts the live `redis-command` datalist-vs-
-  `COMMAND LIST` completeness check (every command this deployed Redis supports must be either
-  suggested or in `DATALIST_EXCLUSIONS`, and nothing suggested must be unsupported); that check
-  self-skips too when `COMMAND LIST` itself is unsupported (a pre-7.0 subcommand), since it is
-  scoped to the current-feature target rather than the compatibility floor
+  (`JSON.*`, `BF.*`, `CF.*`, `CMS.*`, `TOPK.*`, `TDIGEST.*`, `TS.*`), plus the safe `BACKUP HELP`
+  path (`BACKUP`'s other subcommands are `@admin`/`@dangerous` and excluded from the datalist).
+  It also covers Redis 8.10's Search additions, JSONPath expression families and native syntax
+  errors, and Time Series additions including blocking `TS.READ` shutdown and `EXCLUDEEMPTY` in
+  both range directions. Not an exhaustive per-command suite — the generic dispatch path plus
+  one case per family is the contract. Each case uses a command or syntax capability check when
+  the connected Redis doesn't support that feature, so those feature blocks also self-skip on
+  older or module-less Redis. The file also compares the live `redis-command` datalist with
+  `COMMAND LIST`: every command the deployed Redis supports must be suggested or named in
+  `DATALIST_EXCLUSIONS`, and every suggestion must be supported. That current-target audit
+  self-skips only when `COMMAND LIST` itself is unsupported (a pre-7.0 subcommand); it is not a
+  compatibility-floor check
 - `ioredis_v6_characterization_spec.js` — characterization tests pinning the legacy
   (pre-ioredis-v6, RESP2-equivalent) reply shapes for `HRANDFIELD WITHVALUES`, `VSIM
 WITHSCORES`, `XREAD`, `XREADGROUP`, and the ten ioredis "sorted-set pair" commands, all sent
@@ -181,7 +183,10 @@ WITHSCORES`, `XREAD`, `XREADGROUP`, and the ten ioredis "sorted-set pair" comman
 
 Deployment topology coverage:
 
-- `redis_cluster_deployment_spec.js` — Redis Cluster auth, same-slot success, cross-slot failure, pub/sub, blocking list, Lua fallback, same-slot FCALL + read-only Lua, block-mode Script/Function execution, Redis 7.2 cluster-prone commands
+- `redis_cluster_deployment_spec.js` — Redis Cluster auth, same-slot success, cross-slot failure,
+  pub/sub, blocking list, Lua fallback, same-slot FCALL + read-only Lua, block-mode
+  Script/Function execution, Redis 7.2 cluster-prone commands, and Redis 8.10's RESP3
+  `FT.SEARCH LIMIT` regression
 - `redis_sentinel_deployment_spec.js` — Sentinel discovery/auth, pub/sub, blocking list, Lua, FCALL + read-only Lua, block-mode Script/Function with a `CLIENT LIST` dedicated-connection proof on the discovered master, failover/reconnect, Redis 7.2 cluster-prone commands
 - `memorydb_deployment_spec.js` — opt-in AWS MemoryDB cluster/auth (JSON and env-var optionsType)/same-slot/cross-slot/Lua, read-only Lua + FCALL and block-mode coverage (gated on engine function support), and Redis 7.2 cluster-prone command coverage
 
