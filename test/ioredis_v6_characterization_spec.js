@@ -3,15 +3,14 @@
 // Characterization tests for reply shapes that ioredis v6 gates behind case-sensitive
 // command-name lookups (Command.setReplyTransformer keys on the literal registered name,
 // e.g. "xread", never "XREAD"). redis-command dispatches whatever case is saved on the node
-// — the editor now suggests uppercase — so these commands bypass ioredis's reply legacy-shape
-// mapping unless the dispatch layer normalizes their case first (see ARGUMENT_TRANSFORM_COMMANDS
-// / dispatchCommandName in redis.js, today scoped to HSET/HMSET/MSET/MSETNX only).
+// — the editor now suggests uppercase — so these commands would bypass ioredis's reply
+// legacy-shape mapping without the dispatch layer normalizing their case first (see
+// CASE_SENSITIVE_TRANSFORM_COMMANDS / dispatchCommandName in redis.js).
 //
-// These tests pin today's (ioredis v5, RESP2) reply shapes for HRANDFIELD WITHVALUES, VSIM
-// WITHSCORES, XREAD, XREADGROUP, and the ten ioredis "sorted-set pair" commands
-// (zdiff/zinter/zpopmax/zpopmin/zunion/zrandmember/zrange/zrangebyscore/zrevrange/
-// zrevrangebyscore) so the ioredis v6 + RESP3 upgrade and the matching dispatch-set extension
-// can be verified against a known-good baseline instead of guessing.
+// These tests pin the (ioredis v6, RESP3, legacy reply mapping) reply shapes for HRANDFIELD
+// WITHVALUES, VSIM WITHSCORES, XREAD, XREADGROUP, and the ten ioredis "sorted-set pair"
+// commands (zdiff/zinter/zpopmax/zpopmin/zunion/zrandmember/zrange/zrangebyscore/zrevrange/
+// zrevrangebyscore), verified to match the pre-upgrade ioredis v5/RESP2 shapes.
 // See docs/superpowers/specs/2026-08-08-ioredis-v6-resp3-unix-socket-release-plan.md.
 
 const helper = require("node-red-node-test-helper");

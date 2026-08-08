@@ -817,16 +817,39 @@ module.exports = function (RED) {
   }
   RED.nodes.registerType("redis-out", RedisOut);
 
-  // ioredis registers the HSET/MSET family's field-value object argument transform under
-  // the exact lowercase command name only (ioredis Command.js). The editor now saves and
-  // suggests uppercase command names, so dispatch through this lowercase spelling whenever
-  // the saved command case-insensitively matches — for every other command (including
-  // HGETALL, whose case-sensitive *reply* transformer is deliberately bypassed by this node
-  // today) the saved command is sent unchanged.
-  const ARGUMENT_TRANSFORM_COMMANDS = new Set(["hset", "hmset", "mset", "msetnx"]);
+  // ioredis registers several command-specific argument and reply transforms under the exact
+  // lowercase command name only (ioredis Command.js / replyTransformers.js): HSET/HMSET/MSET/
+  // MSETNX's field-value object argument mapping, and — guarding RESP3's native map/pair
+  // replies back into the pre-v6 flat "legacy" shape — HRANDFIELD's WITHVALUES pairs, VSIM's
+  // WITHSCORES pairs, XREAD/XREADGROUP's per-stream entries, and the ten ioredis sorted-set
+  // "pair" commands' WITHSCORES pairs. The editor now saves and suggests uppercase command
+  // names, so dispatch through the lowercase spelling whenever the saved command
+  // case-insensitively matches one of these — for every other command (including HGETALL,
+  // whose case-sensitive *reply* transformer is deliberately bypassed by this node today) the
+  // saved command is sent unchanged.
+  const CASE_SENSITIVE_TRANSFORM_COMMANDS = new Set([
+    "hset",
+    "hmset",
+    "mset",
+    "msetnx",
+    "hrandfield",
+    "vsim",
+    "xread",
+    "xreadgroup",
+    "zdiff",
+    "zinter",
+    "zpopmax",
+    "zpopmin",
+    "zunion",
+    "zrandmember",
+    "zrange",
+    "zrangebyscore",
+    "zrevrange",
+    "zrevrangebyscore",
+  ]);
   function dispatchCommandName(command) {
     var lower = String(command).toLowerCase();
-    return ARGUMENT_TRANSFORM_COMMANDS.has(lower) ? lower : command;
+    return CASE_SENSITIVE_TRANSFORM_COMMANDS.has(lower) ? lower : command;
   }
 
   function RedisCmd(n) {
