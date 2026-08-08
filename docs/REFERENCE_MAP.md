@@ -61,6 +61,12 @@ Command-family coverage (all drive `redis-command` via `client.call`):
   `INCREX`, `XNACK`, and the bundled `JSON`/`BF`/`CF`/`CMS`/`TOPK`/`TDIGEST`/`TS` modules) for
   Redis 8.8 data-type families with no existing family spec; each case self-skips via
   `COMMAND INFO` when the connected Redis lacks that command
+- `../test/ioredis_v6_characterization_spec.js` — pins today's (ioredis v5, RESP2) reply
+  shapes for `HRANDFIELD WITHVALUES`, `VSIM WITHSCORES`, `XREAD`, `XREADGROUP`, and the ten
+  ioredis "sorted-set pair" commands (`zdiff`/`zinter`/`zpopmax`/`zpopmin`/`zunion`/
+  `zrandmember`/`zrange`/`zrangebyscore`/`zrevrange`/`zrevrangebyscore`) sent through
+  `redis-command` in uppercase, so the planned ioredis v6 + RESP3 upgrade and its
+  case-insensitive dispatch fix have a known-good baseline to verify against
 
 Deployment topology coverage:
 

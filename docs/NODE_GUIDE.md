@@ -89,6 +89,12 @@ Recovery:
 - retries log via `node.warn` and show a yellow `retrying` status; a persistent failure
   (e.g. WRONGTYPE) stays visible instead of stopping silently
 - pub/sub is unaffected — ioredis re-subscribes automatically after reconnect
+- the very first `subscribe`/`psubscribe` waits for the client's `ready` event before
+  issuing the command (immediately if already `ready`); this keeps behavior identical
+  whether or not the config sets ioredis's `enableOfflineQueue: false`, which otherwise
+  rejects a command sent before `ready` instead of queuing it. A `lazyConnect` client is
+  started explicitly before that wait. Every reconnect after this first one is still
+  covered by ioredis's own re-subscription.
 
 Shutdown rules:
 

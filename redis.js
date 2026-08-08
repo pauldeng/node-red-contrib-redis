@@ -510,6 +510,7 @@ module.exports = function (RED) {
 
     node.on("close", async (undeploy, done) => {
       removeListeners();
+      client.removeListener("ready", subscribeTopic);
       node.status({});
       running = false;
       if (node._blockingRetryCancel) {
@@ -538,6 +539,38 @@ module.exports = function (RED) {
       }
     };
 
+    // The initial SUBSCRIBE/PSUBSCRIBE is issued right after getConn(), before the client
+    // has reached "ready". The default enableOfflineQueue:true queues it until then, but a
+    // user-configured enableOfflineQueue:false rejects it immediately instead — wait for
+    // "ready" first so both configurations subscribe the same way. A lazy client cannot
+    // emit "ready" until connect() or a command starts it, so explicitly start that one
+    // connection after installing the listener. Every reconnect after this first one is
+    // covered by ioredis's own auto-resubscription.
+    const connectLazyClient = async function () {
+      try {
+        await client.connect();
+      } catch (err) {
+        // attachStatusListeners and the config node already report retryable connection
+        // errors. Only surface a terminal failure here; the ready listener intentionally
+        // remains installed while ioredis is reconnecting.
+        if (running && client.status === "end") {
+          node.error(err);
+          node.status({ fill: "red", shape: "ring", text: "connect failed" });
+        }
+      }
+    };
+
+    const runInitialSubscribe = function () {
+      if (client.status === "ready") {
+        subscribeTopic();
+      } else {
+        client.once("ready", subscribeTopic);
+        if (client.status === "wait") {
+          void connectLazyClient();
+        }
+      }
+    };
+
     if (node.command === "psubscribe") {
       client.on("pmessage", function (pattern, channel, message) {
         var payload = null;
@@ -557,7 +590,7 @@ module.exports = function (RED) {
           });
         }
       });
-      subscribeTopic();
+      runInitialSubscribe();
     } else if (node.command === "subscribe") {
       client.on("message", function (channel, message) {
         var payload = null;
@@ -576,7 +609,7 @@ module.exports = function (RED) {
           });
         }
       });
-      subscribeTopic();
+      runInitialSubscribe();
     } else if (node.command === "xreadgroup") {
       // Stream IDs (">", "$", "0", "123-0") can never contain a colon, so splitting at
       // the FINAL colon is an unambiguous, fully backward-compatible separator: it lets

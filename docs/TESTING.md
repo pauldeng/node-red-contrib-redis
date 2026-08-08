@@ -148,6 +148,13 @@ Command-family coverage, all driving `redis-command` through `client.call`:
   contract. Each case self-skips via a `COMMAND INFO` capability check when the connected
   Redis doesn't support that command, so the file is also safe to run manually against an
   older or module-less Redis
+- `ioredis_v6_characterization_spec.js` — characterization tests pinning today's (ioredis v5,
+  RESP2) reply shapes for `HRANDFIELD WITHVALUES`, `VSIM WITHSCORES`, `XREAD`, `XREADGROUP`,
+  and the ten ioredis "sorted-set pair" commands, all sent through `redis-command` in
+  uppercase (the case the editor saves/suggests). These commands gain case-sensitive
+  argument/reply transformers in ioredis v6, so this file is the known-good baseline the
+  planned ioredis v6 + RESP3 upgrade and its dispatch fix must keep passing; the `VSIM` case
+  self-skips via `COMMAND INFO` when Vector Sets are unsupported
 
 Deployment topology coverage:
 
