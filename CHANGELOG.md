@@ -3,7 +3,11 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.0.0] - 2026-08-09
+
+Major dependency and protocol upgrade: ioredis v6 with RESP3 as the default wire protocol,
+Redis 8.10 as the primary test target, and a Unix socket transport option. Read the
+**Breaking changes** section before upgrading.
 
 ### Breaking changes
 
