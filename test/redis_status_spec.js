@@ -1,4 +1,5 @@
 "use strict";
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
@@ -53,17 +54,15 @@ function redisUrlFromEnv() {
   return `redis://${auth}${host}:${port}`;
 }
 
-describe("node connection status", function () {
-  this.timeout(5000);
-
-  beforeEach(function (done) {
+describe("node connection status", () => {
+  beforeEach(function (t, done) {
     helper.startServer(done);
   });
-  afterEach(function (done) {
+  afterEach(function (t, done) {
     helper.unload().then(() => helper.stopServer(done));
   });
 
-  describe("redis-config test connection endpoint", function () {
+  describe("redis-config test connection endpoint", () => {
     const ENV_OPTIONS_NAME = "NODE_RED_REDIS_TEST_OPTIONS";
     const ENV_URL_NAME = "NODE_RED_REDIS_TEST_URL";
     const MISSING_ENV_NAME = "NODE_RED_REDIS_TEST_MISSING_OPTIONS";
@@ -98,131 +97,44 @@ describe("node connection status", function () {
       }
     });
 
-    it("connects, pings, and gracefully disconnects with current JSON options", async function () {
-      let quitCalled = false;
-      const originalQuit = Redis.prototype.quit;
-      Redis.prototype.quit = async function () {
-        quitCalled = true;
-        return originalQuit.call(this);
-      };
-      try {
-        await helper.load(redisNode, [GOOD_CONFIG]);
-        const res = await helper
-          .request()
-          .post("/redis-config/test")
-          .send({
-            id: "cfg-good",
-            cluster: false,
-            optionsType: "json",
-            options: GOOD_CONFIG.options,
-          })
-          .expect(200);
+    it(
+      "connects, pings, and gracefully disconnects with current JSON options",
+      { timeout: 5000 },
+      async function () {
+        let quitCalled = false;
+        const originalQuit = Redis.prototype.quit;
+        Redis.prototype.quit = async function () {
+          quitCalled = true;
+          return originalQuit.call(this);
+        };
+        try {
+          await helper.load(redisNode, [GOOD_CONFIG]);
+          const res = await helper
+            .request()
+            .post("/redis-config/test")
+            .send({
+              id: "cfg-good",
+              cluster: false,
+              optionsType: "json",
+              options: GOOD_CONFIG.options,
+            })
+            .expect(200);
 
-        assert.strictEqual(res.body.success, true);
-        assert.strictEqual(res.body.response, "PONG");
-        assert.match(res.body.message, /PING -> PONG/);
-        assert.ok(Array.isArray(res.body.log), "verbose log should be returned");
-        assert.ok(quitCalled, "temporary test client should disconnect with QUIT");
-      } finally {
-        Redis.prototype.quit = originalQuit;
-      }
-    });
-
-    it("connects, pings, and gracefully disconnects with options read from an environment variable", async function () {
-      await helper.load(redisNode, [GOOD_CONFIG]);
-      const res = await helper
-        .request()
-        .post("/redis-config/test")
-        .send({
-          id: "cfg-good",
-          cluster: false,
-          optionsType: "env",
-          options: ENV_OPTIONS_NAME,
-        })
-        .expect(200);
-
-      assert.strictEqual(res.body.success, true);
-      assert.strictEqual(res.body.response, "PONG");
-      assert.match(res.body.message, /PING -> PONG/);
-    });
-
-    it("uses environment-variable options instead of the saved JSON config node during test connection", async function () {
-      await helper.load(redisNode, [BAD_CONFIG]);
-      const res = await helper
-        .request()
-        .post("/redis-config/test")
-        .send({
-          id: "cfg-bad",
-          cluster: false,
-          optionsType: "env",
-          options: ENV_OPTIONS_NAME,
-        })
-        .expect(200);
-
-      assert.strictEqual(res.body.success, true);
-      assert.strictEqual(res.body.response, "PONG");
-    });
-
-    it("uses a cluster client when environment-variable options resolve to startup-node array", async function () {
-      const envName = "NODE_RED_REDIS_TEST_CLUSTER_OPTIONS";
-      const originalEnv = process.env[envName];
-      const originalClusterDescriptor = Object.getOwnPropertyDescriptor(Redis, "Cluster");
-      let clusterArgs;
-
-      class FakeCluster {
-        constructor(startupNodes, clientOptions) {
-          clusterArgs = { startupNodes, clientOptions };
-          this.status = "wait";
-          this.listeners = {};
-        }
-        setMaxListeners() {}
-        on(eventName, listener) {
-          this.listeners[eventName] = this.listeners[eventName] || [];
-          this.listeners[eventName].push(listener);
-          return this;
-        }
-        removeListener(eventName, listener) {
-          this.listeners[eventName] = (this.listeners[eventName] || []).filter(
-            (item) => item !== listener
-          );
-          return this;
-        }
-        emit(eventName, value) {
-          (this.listeners[eventName] || []).forEach((listener) => listener(value));
-        }
-        async connect() {
-          this.status = "ready";
-          this.emit("connect");
-          this.emit("ready");
-        }
-        async ping() {
-          return "PONG";
-        }
-        async quit() {
-          this.status = "end";
-          this.emit("end");
-          return "OK";
-        }
-        disconnect() {
-          this.status = "end";
-          this.emit("end");
+          assert.strictEqual(res.body.success, true);
+          assert.strictEqual(res.body.response, "PONG");
+          assert.match(res.body.message, /PING -> PONG/);
+          assert.ok(Array.isArray(res.body.log), "verbose log should be returned");
+          assert.ok(quitCalled, "temporary test client should disconnect with QUIT");
+        } finally {
+          Redis.prototype.quit = originalQuit;
         }
       }
+    );
 
-      process.env[envName] = JSON.stringify([
-        {
-          dnsLookupStrategy: "identity",
-          host: "clustercfg.example.memorydb.local",
-          port: 6379,
-          username: "cluster-user",
-          password: "cluster-pass",
-        },
-      ]);
-      Object.defineProperty(Redis, "Cluster", {
-        value: FakeCluster,
-        configurable: true,
-      });
-      try {
+    it(
+      "connects, pings, and gracefully disconnects with options read from an environment variable",
+      { timeout: 5000 },
+      async function () {
         await helper.load(redisNode, [GOOD_CONFIG]);
         const res = await helper
           .request()
@@ -231,119 +143,199 @@ describe("node connection status", function () {
             id: "cfg-good",
             cluster: false,
             optionsType: "env",
-            options: envName,
+            options: ENV_OPTIONS_NAME,
           })
           .expect(200);
 
         assert.strictEqual(res.body.success, true);
         assert.strictEqual(res.body.response, "PONG");
-        assert.ok(clusterArgs, "test connection should construct Redis.Cluster");
-        assert.deepStrictEqual(clusterArgs.startupNodes, [
+        assert.match(res.body.message, /PING -> PONG/);
+      }
+    );
+
+    it(
+      "uses environment-variable options instead of the saved JSON config node during test connection",
+      { timeout: 5000 },
+      async function () {
+        await helper.load(redisNode, [BAD_CONFIG]);
+        const res = await helper
+          .request()
+          .post("/redis-config/test")
+          .send({
+            id: "cfg-bad",
+            cluster: false,
+            optionsType: "env",
+            options: ENV_OPTIONS_NAME,
+          })
+          .expect(200);
+
+        assert.strictEqual(res.body.success, true);
+        assert.strictEqual(res.body.response, "PONG");
+      }
+    );
+
+    it(
+      "uses a cluster client when environment-variable options resolve to startup-node array",
+      { timeout: 5000 },
+      async function () {
+        const envName = "NODE_RED_REDIS_TEST_CLUSTER_OPTIONS";
+        const originalEnv = process.env[envName];
+        const originalClusterDescriptor = Object.getOwnPropertyDescriptor(Redis, "Cluster");
+        let clusterArgs;
+
+        class FakeCluster {
+          constructor(startupNodes, clientOptions) {
+            clusterArgs = { startupNodes, clientOptions };
+            this.status = "wait";
+            this.listeners = {};
+          }
+          setMaxListeners() {}
+          on(eventName, listener) {
+            this.listeners[eventName] = this.listeners[eventName] || [];
+            this.listeners[eventName].push(listener);
+            return this;
+          }
+          removeListener(eventName, listener) {
+            this.listeners[eventName] = (this.listeners[eventName] || []).filter(
+              (item) => item !== listener
+            );
+            return this;
+          }
+          emit(eventName, value) {
+            (this.listeners[eventName] || []).forEach((listener) => listener(value));
+          }
+          async connect() {
+            this.status = "ready";
+            this.emit("connect");
+            this.emit("ready");
+          }
+          async ping() {
+            return "PONG";
+          }
+          async quit() {
+            this.status = "end";
+            this.emit("end");
+            return "OK";
+          }
+          disconnect() {
+            this.status = "end";
+            this.emit("end");
+          }
+        }
+
+        process.env[envName] = JSON.stringify([
           {
+            dnsLookupStrategy: "identity",
             host: "clustercfg.example.memorydb.local",
             port: 6379,
             username: "cluster-user",
             password: "cluster-pass",
           },
         ]);
-        assert.strictEqual(clusterArgs.clientOptions.redisOptions.username, "cluster-user");
-        assert.strictEqual(clusterArgs.clientOptions.redisOptions.password, "cluster-pass");
-        assert.deepStrictEqual(clusterArgs.clientOptions.redisOptions.tls, {});
-        assert.strictEqual(typeof clusterArgs.clientOptions.dnsLookup, "function");
-      } finally {
-        Object.defineProperty(Redis, "Cluster", originalClusterDescriptor);
-        if (originalEnv === undefined) {
-          delete process.env[envName];
-        } else {
-          process.env[envName] = originalEnv;
+        Object.defineProperty(Redis, "Cluster", {
+          value: FakeCluster,
+          configurable: true,
+        });
+        try {
+          await helper.load(redisNode, [GOOD_CONFIG]);
+          const res = await helper
+            .request()
+            .post("/redis-config/test")
+            .send({
+              id: "cfg-good",
+              cluster: false,
+              optionsType: "env",
+              options: envName,
+            })
+            .expect(200);
+
+          assert.strictEqual(res.body.success, true);
+          assert.strictEqual(res.body.response, "PONG");
+          assert.ok(clusterArgs, "test connection should construct Redis.Cluster");
+          assert.deepStrictEqual(clusterArgs.startupNodes, [
+            {
+              host: "clustercfg.example.memorydb.local",
+              port: 6379,
+              username: "cluster-user",
+              password: "cluster-pass",
+            },
+          ]);
+          assert.strictEqual(clusterArgs.clientOptions.redisOptions.username, "cluster-user");
+          assert.strictEqual(clusterArgs.clientOptions.redisOptions.password, "cluster-pass");
+          assert.deepStrictEqual(clusterArgs.clientOptions.redisOptions.tls, {});
+          assert.strictEqual(typeof clusterArgs.clientOptions.dnsLookup, "function");
+        } finally {
+          Object.defineProperty(Redis, "Cluster", originalClusterDescriptor);
+          if (originalEnv === undefined) {
+            delete process.env[envName];
+          } else {
+            process.env[envName] = originalEnv;
+          }
         }
       }
-    });
+    );
 
-    it("connects with a Redis URL read from an environment variable", async function () {
-      await helper.load(redisNode, [GOOD_CONFIG]);
-      const res = await helper
-        .request()
-        .post("/redis-config/test")
-        .send({
-          id: "cfg-good",
-          cluster: false,
-          optionsType: "env",
-          options: ENV_URL_NAME,
-        })
-        .expect(200);
-
-      assert.strictEqual(res.body.success, true);
-      assert.strictEqual(res.body.response, "PONG");
-    });
-
-    it("returns a clear error when the selected environment variable is not set", async function () {
-      await helper.load(redisNode, [GOOD_CONFIG]);
-      const res = await helper
-        .request()
-        .post("/redis-config/test")
-        .send({
-          id: "cfg-good",
-          cluster: false,
-          optionsType: "env",
-          options: MISSING_ENV_NAME,
-        })
-        .expect(400);
-
-      assert.strictEqual(res.body.success, false);
-      assert.match(
-        res.body.message,
-        new RegExp("Environment variable " + MISSING_ENV_NAME + " is not set")
-      );
-    });
-
-    it("does not use console.log or console.error in redis.js runtime logging", function () {
-      const source = fs.readFileSync(path.join(__dirname, "../redis.js"), "utf8");
-      assert.doesNotMatch(source, /console\.(log|error)\s*\(/);
-      assert.doesNotMatch(source, /RED\.log\.(info|error)\s*\(/);
-    });
-
-    it("returns verbose errors and logs through node.error when the test connection fails", async function () {
-      await helper.load(redisNode, [BAD_CONFIG]);
-      const config = helper.getNode("cfg-bad");
-      let errorCall;
-      config.on("call:error", function (call) {
-        errorCall = call;
-      });
-
-      const res = await helper
-        .request()
-        .post("/redis-config/test")
-        .send({
-          id: "cfg-bad",
-          cluster: false,
-          optionsType: "json",
-          options: BAD_CONFIG.options,
-        })
-        .expect(500);
-
-      await new Promise((resolve) => setImmediate(resolve));
-
-      assert.strictEqual(res.body.success, false);
-      assert.match(res.body.message, /Connection test failed/);
-      assert.ok(res.body.error && res.body.error.message, "error details should be returned");
-      assert.ok(Array.isArray(res.body.log), "verbose log should be returned");
-      assert.ok(errorCall, "config node should call node.error");
-      assert.match(String(errorCall.args[0]), /redis-config test connection failed/);
-    });
-
-    it("redacts Redis URL passwords from failed test-connection diagnostics", async function () {
-      const envName = "NODE_RED_REDIS_SECRET_URL";
-      const originalEnv = process.env[envName];
-      const originalConnect = Redis.prototype.connect;
-      const secret = "super-secret-pass";
-      process.env[envName] = `redis://user:${secret}@127.0.0.1:6379`;
-      Redis.prototype.connect = async function () {
-        throw new Error("synthetic connection failure");
-      };
-      try {
+    it(
+      "connects with a Redis URL read from an environment variable",
+      { timeout: 5000 },
+      async function () {
         await helper.load(redisNode, [GOOD_CONFIG]);
-        const config = helper.getNode("cfg-good");
+        const res = await helper
+          .request()
+          .post("/redis-config/test")
+          .send({
+            id: "cfg-good",
+            cluster: false,
+            optionsType: "env",
+            options: ENV_URL_NAME,
+          })
+          .expect(200);
+
+        assert.strictEqual(res.body.success, true);
+        assert.strictEqual(res.body.response, "PONG");
+      }
+    );
+
+    it(
+      "returns a clear error when the selected environment variable is not set",
+      { timeout: 5000 },
+      async function () {
+        await helper.load(redisNode, [GOOD_CONFIG]);
+        const res = await helper
+          .request()
+          .post("/redis-config/test")
+          .send({
+            id: "cfg-good",
+            cluster: false,
+            optionsType: "env",
+            options: MISSING_ENV_NAME,
+          })
+          .expect(400);
+
+        assert.strictEqual(res.body.success, false);
+        assert.match(
+          res.body.message,
+          new RegExp("Environment variable " + MISSING_ENV_NAME + " is not set")
+        );
+      }
+    );
+
+    it(
+      "does not use console.log or console.error in redis.js runtime logging",
+      { timeout: 5000 },
+      function () {
+        const source = fs.readFileSync(path.join(__dirname, "../redis.js"), "utf8");
+        assert.doesNotMatch(source, /console\.(log|error)\s*\(/);
+        assert.doesNotMatch(source, /RED\.log\.(info|error)\s*\(/);
+      }
+    );
+
+    it(
+      "returns verbose errors and logs through node.error when the test connection fails",
+      { timeout: 5000 },
+      async function () {
+        await helper.load(redisNode, [BAD_CONFIG]);
+        const config = helper.getNode("cfg-bad");
         let errorCall;
         config.on("call:error", function (call) {
           errorCall = call;
@@ -353,122 +345,181 @@ describe("node connection status", function () {
           .request()
           .post("/redis-config/test")
           .send({
-            id: "cfg-good",
+            id: "cfg-bad",
             cluster: false,
-            optionsType: "env",
-            options: envName,
+            optionsType: "json",
+            options: BAD_CONFIG.options,
           })
           .expect(500);
 
         await new Promise((resolve) => setImmediate(resolve));
 
         assert.strictEqual(res.body.success, false);
+        assert.match(res.body.message, /Connection test failed/);
+        assert.ok(res.body.error && res.body.error.message, "error details should be returned");
+        assert.ok(Array.isArray(res.body.log), "verbose log should be returned");
         assert.ok(errorCall, "config node should call node.error");
-        assert.doesNotMatch(JSON.stringify(res.body), new RegExp(secret));
-        assert.doesNotMatch(String(errorCall.args[0]), new RegExp(secret));
-      } finally {
-        Redis.prototype.connect = originalConnect;
-        if (originalEnv === undefined) {
-          delete process.env[envName];
-        } else {
-          process.env[envName] = originalEnv;
+        assert.match(String(errorCall.args[0]), /redis-config test connection failed/);
+      }
+    );
+
+    it(
+      "redacts Redis URL passwords from failed test-connection diagnostics",
+      { timeout: 5000 },
+      async function () {
+        const envName = "NODE_RED_REDIS_SECRET_URL";
+        const originalEnv = process.env[envName];
+        const originalConnect = Redis.prototype.connect;
+        const secret = "super-secret-pass";
+        process.env[envName] = `redis://user:${secret}@127.0.0.1:6379`;
+        Redis.prototype.connect = async function () {
+          throw new Error("synthetic connection failure");
+        };
+        try {
+          await helper.load(redisNode, [GOOD_CONFIG]);
+          const config = helper.getNode("cfg-good");
+          let errorCall;
+          config.on("call:error", function (call) {
+            errorCall = call;
+          });
+
+          const res = await helper
+            .request()
+            .post("/redis-config/test")
+            .send({
+              id: "cfg-good",
+              cluster: false,
+              optionsType: "env",
+              options: envName,
+            })
+            .expect(500);
+
+          await new Promise((resolve) => setImmediate(resolve));
+
+          assert.strictEqual(res.body.success, false);
+          assert.ok(errorCall, "config node should call node.error");
+          assert.doesNotMatch(JSON.stringify(res.body), new RegExp(secret));
+          assert.doesNotMatch(String(errorCall.args[0]), new RegExp(secret));
+        } finally {
+          Redis.prototype.connect = originalConnect;
+          if (originalEnv === undefined) {
+            delete process.env[envName];
+          } else {
+            process.env[envName] = originalEnv;
+          }
         }
       }
-    });
+    );
   });
 
   // ── redis-in ────────────────────────────────────────────────────────────
 
-  describe("redis-in", function () {
-    it("blpop — shows green connected when Redis is reachable", function (done) {
-      const flow = [
-        GOOD_CONFIG,
-        {
-          id: "n1",
-          type: "redis-in",
-          server: "cfg-good",
-          command: "blpop",
-          topic: "status:blpop",
-          obj: false,
-          timeout: 1,
-          groupname: "",
-          consumername: "",
-          wires: [],
-        },
-      ];
-      helper.load(redisNode, flow, function () {
-        onStatus(helper.getNode("n1"), isGreen, done);
-      });
-    });
+  describe("redis-in", () => {
+    it(
+      "blpop — shows green connected when Redis is reachable",
+      { timeout: 5000 },
+      function (t, done) {
+        const flow = [
+          GOOD_CONFIG,
+          {
+            id: "n1",
+            type: "redis-in",
+            server: "cfg-good",
+            command: "blpop",
+            topic: "status:blpop",
+            obj: false,
+            timeout: 1,
+            groupname: "",
+            consumername: "",
+            wires: [],
+          },
+        ];
+        helper.load(redisNode, flow, function () {
+          onStatus(helper.getNode("n1"), isGreen, done);
+        });
+      }
+    );
 
-    it("subscribe — shows green connected when Redis is reachable", function (done) {
-      const flow = [
-        GOOD_CONFIG,
-        {
-          id: "n1",
-          type: "redis-in",
-          server: "cfg-good",
-          command: "subscribe",
-          topic: "status:sub",
-          obj: false,
-          timeout: 0,
-          groupname: "",
-          consumername: "",
-          wires: [],
-        },
-      ];
-      helper.load(redisNode, flow, function () {
-        onStatus(helper.getNode("n1"), isGreen, done);
-      });
-    });
+    it(
+      "subscribe — shows green connected when Redis is reachable",
+      { timeout: 5000 },
+      function (t, done) {
+        const flow = [
+          GOOD_CONFIG,
+          {
+            id: "n1",
+            type: "redis-in",
+            server: "cfg-good",
+            command: "subscribe",
+            topic: "status:sub",
+            obj: false,
+            timeout: 0,
+            groupname: "",
+            consumername: "",
+            wires: [],
+          },
+        ];
+        helper.load(redisNode, flow, function () {
+          onStatus(helper.getNode("n1"), isGreen, done);
+        });
+      }
+    );
 
-    it("psubscribe — shows green connected when Redis is reachable", function (done) {
-      const flow = [
-        GOOD_CONFIG,
-        {
-          id: "n1",
-          type: "redis-in",
-          server: "cfg-good",
-          command: "psubscribe",
-          topic: "status:psub:*",
-          obj: false,
-          timeout: 0,
-          groupname: "",
-          consumername: "",
-          wires: [],
-        },
-      ];
-      helper.load(redisNode, flow, function () {
-        onStatus(helper.getNode("n1"), isGreen, done);
-      });
-    });
+    it(
+      "psubscribe — shows green connected when Redis is reachable",
+      { timeout: 5000 },
+      function (t, done) {
+        const flow = [
+          GOOD_CONFIG,
+          {
+            id: "n1",
+            type: "redis-in",
+            server: "cfg-good",
+            command: "psubscribe",
+            topic: "status:psub:*",
+            obj: false,
+            timeout: 0,
+            groupname: "",
+            consumername: "",
+            wires: [],
+          },
+        ];
+        helper.load(redisNode, flow, function () {
+          onStatus(helper.getNode("n1"), isGreen, done);
+        });
+      }
+    );
 
-    it("blpop — shows red/error status when Redis is unreachable", function (done) {
-      const flow = [
-        BAD_CONFIG,
-        {
-          id: "n1",
-          type: "redis-in",
-          server: "cfg-bad",
-          command: "blpop",
-          topic: "status:bad:blpop",
-          obj: false,
-          timeout: 1,
-          groupname: "",
-          consumername: "",
-          wires: [],
-        },
-      ];
-      helper.load(redisNode, flow, function () {
-        onStatus(helper.getNode("n1"), isRed, done);
-      });
-    });
+    it(
+      "blpop — shows red/error status when Redis is unreachable",
+      { timeout: 5000 },
+      function (t, done) {
+        const flow = [
+          BAD_CONFIG,
+          {
+            id: "n1",
+            type: "redis-in",
+            server: "cfg-bad",
+            command: "blpop",
+            topic: "status:bad:blpop",
+            obj: false,
+            timeout: 1,
+            groupname: "",
+            consumername: "",
+            wires: [],
+          },
+        ];
+        helper.load(redisNode, flow, function () {
+          onStatus(helper.getNode("n1"), isRed, done);
+        });
+      }
+    );
   });
 
   // ── redis-out ───────────────────────────────────────────────────────────
 
-  describe("redis-out", function () {
-    it("shows green connected when Redis is reachable", function (done) {
+  describe("redis-out", () => {
+    it("shows green connected when Redis is reachable", { timeout: 5000 }, function (t, done) {
       const flow = [
         GOOD_CONFIG,
         {
@@ -486,7 +537,7 @@ describe("node connection status", function () {
       });
     });
 
-    it("shows red/error status when Redis is unreachable", function (done) {
+    it("shows red/error status when Redis is unreachable", { timeout: 5000 }, function (t, done) {
       const flow = [
         BAD_CONFIG,
         {
@@ -507,8 +558,8 @@ describe("node connection status", function () {
 
   // ── redis-command ───────────────────────────────────────────────────────
 
-  describe("redis-command", function () {
-    it("shows green connected when Redis is reachable", function (done) {
+  describe("redis-command", () => {
+    it("shows green connected when Redis is reachable", { timeout: 5000 }, function (t, done) {
       const flow = [
         GOOD_CONFIG,
         {
@@ -527,7 +578,7 @@ describe("node connection status", function () {
       });
     });
 
-    it("shows red/error status when Redis is unreachable", function (done) {
+    it("shows red/error status when Redis is unreachable", { timeout: 5000 }, function (t, done) {
       const flow = [
         BAD_CONFIG,
         {
@@ -549,75 +600,87 @@ describe("node connection status", function () {
 
   // ── redis-lua-script ────────────────────────────────────────────────────
 
-  describe("redis-lua-script", function () {
-    it("(non-stored) shows green connected when Redis is reachable", function (done) {
-      const flow = [
-        GOOD_CONFIG,
-        {
-          id: "n1",
-          type: "redis-lua-script",
-          server: "cfg-good",
-          func: "return 1",
-          keyval: 0,
-          stored: false,
-          block: false,
-          wires: [],
-        },
-      ];
-      helper.load(redisNode, flow, function () {
-        onStatus(helper.getNode("n1"), isGreen, done);
-      });
-    });
-
-    it("(stored) shows green 'script loaded' when Redis is reachable", function (done) {
-      const flow = [
-        GOOD_CONFIG,
-        {
-          id: "n1",
-          type: "redis-lua-script",
-          server: "cfg-good",
-          func: "return 1",
-          keyval: 0,
-          stored: true,
-          block: false,
-          wires: [],
-        },
-      ];
-      helper.load(redisNode, flow, function () {
-        onStatus(
-          helper.getNode("n1"),
-          function (s) {
-            return s.fill === "green" && s.text === "script loaded";
+  describe("redis-lua-script", () => {
+    it(
+      "(non-stored) shows green connected when Redis is reachable",
+      { timeout: 5000 },
+      function (t, done) {
+        const flow = [
+          GOOD_CONFIG,
+          {
+            id: "n1",
+            type: "redis-lua-script",
+            server: "cfg-good",
+            func: "return 1",
+            keyval: 0,
+            stored: false,
+            block: false,
+            wires: [],
           },
-          done
-        );
-      });
-    });
+        ];
+        helper.load(redisNode, flow, function () {
+          onStatus(helper.getNode("n1"), isGreen, done);
+        });
+      }
+    );
 
-    it("(non-stored) shows red/error status when Redis is unreachable", function (done) {
-      const flow = [
-        BAD_CONFIG,
-        {
-          id: "n1",
-          type: "redis-lua-script",
-          server: "cfg-bad",
-          func: "return 1",
-          keyval: 0,
-          stored: false,
-          block: false,
-          wires: [],
-        },
-      ];
-      helper.load(redisNode, flow, function () {
-        onStatus(helper.getNode("n1"), isRed, done);
-      });
-    });
+    it(
+      "(stored) shows green 'script loaded' when Redis is reachable",
+      { timeout: 5000 },
+      function (t, done) {
+        const flow = [
+          GOOD_CONFIG,
+          {
+            id: "n1",
+            type: "redis-lua-script",
+            server: "cfg-good",
+            func: "return 1",
+            keyval: 0,
+            stored: true,
+            block: false,
+            wires: [],
+          },
+        ];
+        helper.load(redisNode, flow, function () {
+          onStatus(
+            helper.getNode("n1"),
+            function (s) {
+              return s.fill === "green" && s.text === "script loaded";
+            },
+            done
+          );
+        });
+      }
+    );
+
+    it(
+      "(non-stored) shows red/error status when Redis is unreachable",
+      { timeout: 5000 },
+      function (t, done) {
+        const flow = [
+          BAD_CONFIG,
+          {
+            id: "n1",
+            type: "redis-lua-script",
+            server: "cfg-bad",
+            func: "return 1",
+            keyval: 0,
+            stored: false,
+            block: false,
+            wires: [],
+          },
+        ];
+        helper.load(redisNode, flow, function () {
+          onStatus(helper.getNode("n1"), isRed, done);
+        });
+      }
+    );
   });
 
   // ── redis-instance ──────────────────────────────────────────────────────
 
-  describe("redis-instance", function () {
-    it("shows green connected when Redis is reachable", function (done) {
+  describe("redis-instance", () => {
+    it("shows green connected when Redis is reachable", { timeout: 5000 }, function (t, done) {
       const flow = [
         GOOD_CONFIG,
         {
@@ -634,7 +697,7 @@ describe("node connection status", function () {
       });
     });
 
-    it("shows red/error status when Redis is unreachable", function (done) {
+    it("shows red/error status when Redis is unreachable", { timeout: 5000 }, function (t, done) {
       const flow = [
         BAD_CONFIG,
         {
@@ -654,8 +717,8 @@ describe("node connection status", function () {
 
   // ── close clears status ─────────────────────────────────────────────────
 
-  describe("on node close", function () {
-    it("redis-in clears status to empty on close", function (done) {
+  describe("on node close", () => {
+    it("redis-in clears status to empty on close", { timeout: 5000 }, function (t, done) {
       const flow = [
         GOOD_CONFIG,
         {
@@ -699,7 +762,7 @@ describe("node connection status", function () {
 
   // ── graceful shutdown ───────────────────────────────────────────────────
 
-  describe("graceful shutdown", function () {
+  describe("graceful shutdown", () => {
     // Spy on Redis.prototype.quit by wrapping it. Since ioredis is cached by
     // Node.js module system, the same prototype is used by redis.js — so this
     // spy is visible inside the node without any module re-loading tricks.
@@ -719,7 +782,7 @@ describe("node connection status", function () {
       Redis.prototype.quit = originalQuit;
     });
 
-    it("redis-out calls quit() on shutdown", function (done) {
+    it("redis-out calls quit() on shutdown", { timeout: 5000 }, function (t, done) {
       const flow = [
         GOOD_CONFIG,
         {
@@ -745,7 +808,7 @@ describe("node connection status", function () {
       });
     });
 
-    it("redis-command calls quit() on shutdown", function (done) {
+    it("redis-command calls quit() on shutdown", { timeout: 5000 }, function (t, done) {
       const flow = [
         GOOD_CONFIG,
         {
@@ -772,38 +835,42 @@ describe("node connection status", function () {
       });
     });
 
-    it("redis-in (blpop) skips quit() and disconnects immediately on shutdown", function (done) {
-      // BLPOP/XREADGROUP BLOCK 0 queue QUIT behind the in-flight blocking
-      // command — QUIT would never be sent, so we force-disconnect instead.
-      const flow = [
-        GOOD_CONFIG,
-        {
-          id: "n1",
-          type: "redis-in",
-          server: "cfg-good",
-          command: "blpop",
-          topic: "shutdown:in",
-          obj: false,
-          timeout: 1,
-          groupname: "",
-          consumername: "",
-          wires: [],
-        },
-      ];
-      helper.load(redisNode, flow, function () {
-        onStatus(helper.getNode("n1"), isGreen, function () {
-          helper.unload().then(function () {
-            if (!quitCalled) {
-              done();
-            } else {
-              done(new Error("quit() should NOT be called for blocking redis-in nodes"));
-            }
+    it(
+      "redis-in (blpop) skips quit() and disconnects immediately on shutdown",
+      { timeout: 5000 },
+      function (t, done) {
+        // BLPOP/XREADGROUP BLOCK 0 queue QUIT behind the in-flight blocking
+        // command — QUIT would never be sent, so we force-disconnect instead.
+        const flow = [
+          GOOD_CONFIG,
+          {
+            id: "n1",
+            type: "redis-in",
+            server: "cfg-good",
+            command: "blpop",
+            topic: "shutdown:in",
+            obj: false,
+            timeout: 1,
+            groupname: "",
+            consumername: "",
+            wires: [],
+          },
+        ];
+        helper.load(redisNode, flow, function () {
+          onStatus(helper.getNode("n1"), isGreen, function () {
+            helper.unload().then(function () {
+              if (!quitCalled) {
+                done();
+              } else {
+                done(new Error("quit() should NOT be called for blocking redis-in nodes"));
+              }
+            });
           });
         });
-      });
-    });
+      }
+    );
 
-    it("redis-lua-script calls quit() on shutdown", function (done) {
+    it("redis-lua-script calls quit() on shutdown", { timeout: 5000 }, function (t, done) {
       const flow = [
         GOOD_CONFIG,
         {
@@ -835,7 +902,7 @@ describe("node connection status", function () {
   // gracefulQuit defends against a QUIT that never completes. Both fallbacks are driven
   // here by patching the shared ioredis prototype, the same technique the graceful
   // shutdown block above uses.
-  describe("graceful shutdown fallbacks", function () {
+  describe("graceful shutdown fallbacks", () => {
     let originalQuit;
     let originalDisconnect;
     let disconnectCalled;
@@ -877,30 +944,32 @@ describe("node connection status", function () {
       Redis.prototype.disconnect = originalDisconnect;
     });
 
-    it("forces a disconnect when quit() stalls past the graceful timeout", async function () {
-      this.timeout(15000);
-      Redis.prototype.quit = function () {
-        return new Promise(function (_resolve, reject) {
-          pendingQuitReject = reject;
-        });
-      };
+    it(
+      "forces a disconnect when quit() stalls past the graceful timeout",
+      { timeout: 15000 },
+      async function () {
+        Redis.prototype.quit = function () {
+          return new Promise(function (_resolve, reject) {
+            pendingQuitReject = reject;
+          });
+        };
 
-      await helper.load(redisNode, OUT_FLOW);
-      await new Promise((resolve) => onStatus(helper.getNode("n1"), isGreen, resolve));
+        await helper.load(redisNode, OUT_FLOW);
+        await new Promise((resolve) => onStatus(helper.getNode("n1"), isGreen, resolve));
 
-      const started = Date.now();
-      await helper.unload();
-      const elapsed = Date.now() - started;
+        const started = Date.now();
+        await helper.unload();
+        const elapsed = Date.now() - started;
 
-      assert.ok(disconnectCalled, "a stalled quit() must be followed by a forced disconnect");
-      assert.ok(
-        elapsed >= 1900,
-        `shutdown should wait for the graceful timeout before forcing, waited ${elapsed}ms`
-      );
-    });
+        assert.ok(disconnectCalled, "a stalled quit() must be followed by a forced disconnect");
+        assert.ok(
+          elapsed >= 1900,
+          `shutdown should wait for the graceful timeout before forcing, waited ${elapsed}ms`
+        );
+      }
+    );
 
-    it("falls back to disconnect() when quit() rejects", async function () {
-      this.timeout(15000);
+    it("falls back to disconnect() when quit() rejects", { timeout: 15000 }, async function () {
       Redis.prototype.quit = function () {
         return Promise.reject(new Error("QUIT refused"));
       };
@@ -928,73 +997,81 @@ describe("node connection status", function () {
   // client. Node-RED still disables the node (a constructor throw is a
   // per-node failure, not a process crash) — only the failure message
   // changes from a raw TypeError to something actionable.
-  describe("missing or invalid redis-config", function () {
-    it("logs a clear error (not a generic TypeError) when a node's Server field references a nonexistent config node", async function () {
-      const flow = [
-        {
-          id: "n1",
-          type: "redis-out",
-          server: "nonexistent-config",
-          command: "rpush",
-          topic: "missing-config:key",
-          obj: false,
-          wires: [],
-        },
-      ];
-      await helper.load(redisNode, flow);
-      const logSpy = helper.log();
-      await new Promise((resolve) => setImmediate(resolve));
+  describe("missing or invalid redis-config", () => {
+    it(
+      "logs a clear error (not a generic TypeError) when a node's Server field references a nonexistent config node",
+      { timeout: 5000 },
+      async function () {
+        const flow = [
+          {
+            id: "n1",
+            type: "redis-out",
+            server: "nonexistent-config",
+            command: "rpush",
+            topic: "missing-config:key",
+            obj: false,
+            wires: [],
+          },
+        ];
+        await helper.load(redisNode, flow);
+        const logSpy = helper.log();
+        await new Promise((resolve) => setImmediate(resolve));
 
-      assert.strictEqual(helper.getNode("n1"), null, "node should not be constructed");
-      const entry = logSpy
-        .getCalls()
-        .map((c) => c.args[0])
-        .find((e) => e.id === "n1");
-      assert.ok(entry, "runtime should log a failure for node n1");
-      assert.doesNotMatch(
-        String(entry.msg && entry.msg.message),
-        /Cannot read propert/,
-        "failure message should not be a raw TypeError"
-      );
-      assert.match(String(entry.msg && entry.msg.message), /redis-config/i);
-    });
+        assert.strictEqual(helper.getNode("n1"), null, "node should not be constructed");
+        const entry = logSpy
+          .getCalls()
+          .map((c) => c.args[0])
+          .find((e) => e.id === "n1");
+        assert.ok(entry, "runtime should log a failure for node n1");
+        assert.doesNotMatch(
+          String(entry.msg && entry.msg.message),
+          /Cannot read propert/,
+          "failure message should not be a raw TypeError"
+        );
+        assert.match(String(entry.msg && entry.msg.message), /redis-config/i);
+      }
+    );
 
-    it("logs a clear error (not a generic TypeError) when the referenced redis-config has no usable options", async function () {
-      const flow = [
-        {
-          id: "cfg-bad-opts",
-          type: "redis-config",
-          name: "BadOpts",
-          options: "{not valid json",
-          optionsType: "json",
-          cluster: false,
-        },
-        {
-          id: "n1",
-          type: "redis-out",
-          server: "cfg-bad-opts",
-          command: "rpush",
-          topic: "missing-config:key2",
-          obj: false,
-          wires: [],
-        },
-      ];
-      await helper.load(redisNode, flow);
-      const logSpy = helper.log();
-      await new Promise((resolve) => setImmediate(resolve));
+    it(
+      "logs a clear error (not a generic TypeError) when the referenced redis-config has no usable options",
+      { timeout: 5000 },
+      async function () {
+        const flow = [
+          {
+            id: "cfg-bad-opts",
+            type: "redis-config",
+            name: "BadOpts",
+            options: "{not valid json",
+            optionsType: "json",
+            cluster: false,
+          },
+          {
+            id: "n1",
+            type: "redis-out",
+            server: "cfg-bad-opts",
+            command: "rpush",
+            topic: "missing-config:key2",
+            obj: false,
+            wires: [],
+          },
+        ];
+        await helper.load(redisNode, flow);
+        const logSpy = helper.log();
+        await new Promise((resolve) => setImmediate(resolve));
 
-      assert.strictEqual(helper.getNode("n1"), null, "node should not be constructed");
-      const entry = logSpy
-        .getCalls()
-        .map((c) => c.args[0])
-        .find((e) => e.id === "n1");
-      assert.ok(entry, "runtime should log a failure for node n1");
-      assert.doesNotMatch(
-        String(entry.msg && entry.msg.message),
-        /Cannot read propert|setMaxListeners/,
-        "failure message should not be a raw TypeError"
-      );
-      assert.match(String(entry.msg && entry.msg.message), /redis-config|options/i);
-    });
+        assert.strictEqual(helper.getNode("n1"), null, "node should not be constructed");
+        const entry = logSpy
+          .getCalls()
+          .map((c) => c.args[0])
+          .find((e) => e.id === "n1");
+        assert.ok(entry, "runtime should log a failure for node n1");
+        assert.doesNotMatch(
+          String(entry.msg && entry.msg.message),
+          /Cannot read propert|setMaxListeners/,
+          "failure message should not be a raw TypeError"
+        );
+        assert.match(String(entry.msg && entry.msg.message), /redis-config|options/i);
+      }
+    );
   });
 });

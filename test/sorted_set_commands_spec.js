@@ -1,3 +1,4 @@
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
@@ -5,16 +6,14 @@ const { redisConfigNode } = require("./helpers/deployment");
 
 helper.init(require.resolve("node-red"));
 
-describe("Sorted Set commands", function () {
-  this.timeout(8000);
-
+describe("Sorted Set commands", () => {
   const configNode = redisConfigNode("config1", "Local");
 
-  beforeEach((done) => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => {
       helper.stopServer(() => {
         cleanupKeys("test:zset:*", done);
@@ -22,7 +21,7 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZADD members and ZSCORE return the score", function (done) {
+  it("should ZADD members and ZSCORE return the score", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -97,7 +96,7 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZREM remove members and ZCARD return count", function (done) {
+  it("should ZREM remove members and ZCARD return count", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -189,99 +188,103 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZRANK and ZREVRANK return position in ascending and descending order", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD",
-        topic: "",
-        params: "[]",
-        wires: [["zadd-helper"]],
-      },
-      { id: "zadd-helper", type: "helper" },
-      {
-        id: "zrank-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZRANK",
-        name: "ZRANK",
-        topic: "",
-        params: "[]",
-        wires: [["zrank-helper"]],
-      },
-      { id: "zrank-helper", type: "helper" },
-      {
-        id: "zrevrank-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZREVRANK",
-        name: "ZREVRANK",
-        topic: "",
-        params: "[]",
-        wires: [["zrevrank-helper"]],
-      },
-      { id: "zrevrank-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should ZRANK and ZREVRANK return position in ascending and descending order",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD",
+          topic: "",
+          params: "[]",
+          wires: [["zadd-helper"]],
+        },
+        { id: "zadd-helper", type: "helper" },
+        {
+          id: "zrank-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZRANK",
+          name: "ZRANK",
+          topic: "",
+          params: "[]",
+          wires: [["zrank-helper"]],
+        },
+        { id: "zrank-helper", type: "helper" },
+        {
+          id: "zrevrank-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZREVRANK",
+          name: "ZREVRANK",
+          topic: "",
+          params: "[]",
+          wires: [["zrevrank-helper"]],
+        },
+        { id: "zrevrank-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const zaddNode = helper.getNode("zadd-node");
-      const zaddHelper = helper.getNode("zadd-helper");
-      const zrankNode = helper.getNode("zrank-node");
-      const zrankHelper = helper.getNode("zrank-helper");
-      const zrevrankNode = helper.getNode("zrevrank-node");
-      const zrevrankHelper = helper.getNode("zrevrank-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const zaddNode = helper.getNode("zadd-node");
+        const zaddHelper = helper.getNode("zadd-helper");
+        const zrankNode = helper.getNode("zrank-node");
+        const zrankHelper = helper.getNode("zrank-helper");
+        const zrevrankNode = helper.getNode("zrevrank-node");
+        const zrevrankHelper = helper.getNode("zrevrank-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        zrevrankHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(2);
+            delNode.receive({ topic: "test:zset:rank" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        zrankHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(0);
+            zrevrankNode.receive({ topic: "test:zset:rank", payload: "a" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        zaddHelper.on("input", () => {
+          zrankNode.receive({ topic: "test:zset:rank", payload: "a" });
+        });
+
+        zaddNode.receive({
+          topic: "test:zset:rank",
+          payload: ["1", "a", "2", "b", "3", "c"],
+        });
       });
+    }
+  );
 
-      zrevrankHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(2);
-          delNode.receive({ topic: "test:zset:rank" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      zrankHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(0);
-          zrevrankNode.receive({ topic: "test:zset:rank", payload: "a" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      zaddHelper.on("input", () => {
-        zrankNode.receive({ topic: "test:zset:rank", payload: "a" });
-      });
-
-      zaddNode.receive({
-        topic: "test:zset:rank",
-        payload: ["1", "a", "2", "b", "3", "c"],
-      });
-    });
-  });
-
-  it("should ZRANGE and ZREVRANGE return elements in order", function (done) {
+  it("should ZRANGE and ZREVRANGE return elements in order", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -379,7 +382,7 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZINCRBY increment a member score", function (done) {
+  it("should ZINCRBY increment a member score", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -449,80 +452,84 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZCOUNT return number of members within score range", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD",
-        topic: "",
-        params: "[]",
-        wires: [["zadd-helper"]],
-      },
-      { id: "zadd-helper", type: "helper" },
-      {
-        id: "zcount-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZCOUNT",
-        name: "ZCOUNT",
-        topic: "",
-        params: "[]",
-        wires: [["zcount-helper"]],
-      },
-      { id: "zcount-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should ZCOUNT return number of members within score range",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD",
+          topic: "",
+          params: "[]",
+          wires: [["zadd-helper"]],
+        },
+        { id: "zadd-helper", type: "helper" },
+        {
+          id: "zcount-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZCOUNT",
+          name: "ZCOUNT",
+          topic: "",
+          params: "[]",
+          wires: [["zcount-helper"]],
+        },
+        { id: "zcount-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const zaddNode = helper.getNode("zadd-node");
-      const zaddHelper = helper.getNode("zadd-helper");
-      const zcountNode = helper.getNode("zcount-node");
-      const zcountHelper = helper.getNode("zcount-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const zaddNode = helper.getNode("zadd-node");
+        const zaddHelper = helper.getNode("zadd-helper");
+        const zcountNode = helper.getNode("zcount-node");
+        const zcountHelper = helper.getNode("zcount-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      zcountHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(2);
-          delNode.receive({ topic: "test:zset:zcount" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        zcountHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(2);
+            delNode.receive({ topic: "test:zset:zcount" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      zaddHelper.on("input", () => {
-        zcountNode.receive({
+        zaddHelper.on("input", () => {
+          zcountNode.receive({
+            topic: "test:zset:zcount",
+            payload: ["1", "2"],
+          });
+        });
+
+        zaddNode.receive({
           topic: "test:zset:zcount",
-          payload: ["1", "2"],
+          payload: ["1", "a", "2", "b", "3", "c"],
         });
       });
+    }
+  );
 
-      zaddNode.receive({
-        topic: "test:zset:zcount",
-        payload: ["1", "a", "2", "b", "3", "c"],
-      });
-    });
-  });
-
-  it("should ZLEXCOUNT count members between lex range", function (done) {
+  it("should ZLEXCOUNT count members between lex range", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -595,203 +602,211 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZRANGEBYSCORE and ZREVRANGEBYSCORE return members in score range", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD",
-        topic: "",
-        params: "[]",
-        wires: [["zadd-helper"]],
-      },
-      { id: "zadd-helper", type: "helper" },
-      {
-        id: "zrangebyscore-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZRANGEBYSCORE",
-        name: "ZRANGEBYSCORE",
-        topic: "",
-        params: "[]",
-        wires: [["zrangebyscore-helper"]],
-      },
-      { id: "zrangebyscore-helper", type: "helper" },
-      {
-        id: "zrevrangebyscore-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZREVRANGEBYSCORE",
-        name: "ZREVRANGEBYSCORE",
-        topic: "",
-        params: "[]",
-        wires: [["zrevrangebyscore-helper"]],
-      },
-      { id: "zrevrangebyscore-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should ZRANGEBYSCORE and ZREVRANGEBYSCORE return members in score range",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD",
+          topic: "",
+          params: "[]",
+          wires: [["zadd-helper"]],
+        },
+        { id: "zadd-helper", type: "helper" },
+        {
+          id: "zrangebyscore-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZRANGEBYSCORE",
+          name: "ZRANGEBYSCORE",
+          topic: "",
+          params: "[]",
+          wires: [["zrangebyscore-helper"]],
+        },
+        { id: "zrangebyscore-helper", type: "helper" },
+        {
+          id: "zrevrangebyscore-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZREVRANGEBYSCORE",
+          name: "ZREVRANGEBYSCORE",
+          topic: "",
+          params: "[]",
+          wires: [["zrevrangebyscore-helper"]],
+        },
+        { id: "zrevrangebyscore-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const zaddNode = helper.getNode("zadd-node");
-      const zaddHelper = helper.getNode("zadd-helper");
-      const zrangebyscoreNode = helper.getNode("zrangebyscore-node");
-      const zrangebyscoreHelper = helper.getNode("zrangebyscore-helper");
-      const zrevrangebyscoreNode = helper.getNode("zrevrangebyscore-node");
-      const zrevrangebyscoreHelper = helper.getNode("zrevrangebyscore-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const zaddNode = helper.getNode("zadd-node");
+        const zaddHelper = helper.getNode("zadd-helper");
+        const zrangebyscoreNode = helper.getNode("zrangebyscore-node");
+        const zrangebyscoreHelper = helper.getNode("zrangebyscore-helper");
+        const zrevrangebyscoreNode = helper.getNode("zrevrangebyscore-node");
+        const zrevrangebyscoreHelper = helper.getNode("zrevrangebyscore-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      zrevrangebyscoreHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.eql(["b", "a"]);
-          delNode.receive({ topic: "test:zset:byscore" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        zrevrangebyscoreHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.eql(["b", "a"]);
+            delNode.receive({ topic: "test:zset:byscore" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      zrangebyscoreHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.eql(["a", "b"]);
-          zrevrangebyscoreNode.receive({
+        zrangebyscoreHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.eql(["a", "b"]);
+            zrevrangebyscoreNode.receive({
+              topic: "test:zset:byscore",
+              payload: ["2", "1"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        zaddHelper.on("input", () => {
+          zrangebyscoreNode.receive({
             topic: "test:zset:byscore",
-            payload: ["2", "1"],
+            payload: ["1", "2"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      zaddHelper.on("input", () => {
-        zrangebyscoreNode.receive({
+        zaddNode.receive({
           topic: "test:zset:byscore",
-          payload: ["1", "2"],
+          payload: ["1", "a", "2", "b", "3", "c"],
         });
       });
+    }
+  );
 
-      zaddNode.receive({
-        topic: "test:zset:byscore",
-        payload: ["1", "a", "2", "b", "3", "c"],
-      });
-    });
-  });
+  it(
+    "should ZRANGEBYLEX and ZREVRANGEBYLEX return members in lex range",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD",
+          topic: "",
+          params: "[]",
+          wires: [["zadd-helper"]],
+        },
+        { id: "zadd-helper", type: "helper" },
+        {
+          id: "zrangebylex-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZRANGEBYLEX",
+          name: "ZRANGEBYLEX",
+          topic: "",
+          params: "[]",
+          wires: [["zrangebylex-helper"]],
+        },
+        { id: "zrangebylex-helper", type: "helper" },
+        {
+          id: "zrevrangebylex-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZREVRANGEBYLEX",
+          name: "ZREVRANGEBYLEX",
+          topic: "",
+          params: "[]",
+          wires: [["zrevrangebylex-helper"]],
+        },
+        { id: "zrevrangebylex-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-  it("should ZRANGEBYLEX and ZREVRANGEBYLEX return members in lex range", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD",
-        topic: "",
-        params: "[]",
-        wires: [["zadd-helper"]],
-      },
-      { id: "zadd-helper", type: "helper" },
-      {
-        id: "zrangebylex-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZRANGEBYLEX",
-        name: "ZRANGEBYLEX",
-        topic: "",
-        params: "[]",
-        wires: [["zrangebylex-helper"]],
-      },
-      { id: "zrangebylex-helper", type: "helper" },
-      {
-        id: "zrevrangebylex-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZREVRANGEBYLEX",
-        name: "ZREVRANGEBYLEX",
-        topic: "",
-        params: "[]",
-        wires: [["zrevrangebylex-helper"]],
-      },
-      { id: "zrevrangebylex-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+      helper.load(redisNode, flow, () => {
+        const zaddNode = helper.getNode("zadd-node");
+        const zaddHelper = helper.getNode("zadd-helper");
+        const zrangebylexNode = helper.getNode("zrangebylex-node");
+        const zrangebylexHelper = helper.getNode("zrangebylex-helper");
+        const zrevrangebylexNode = helper.getNode("zrevrangebylex-node");
+        const zrevrangebylexHelper = helper.getNode("zrevrangebylex-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-    helper.load(redisNode, flow, () => {
-      const zaddNode = helper.getNode("zadd-node");
-      const zaddHelper = helper.getNode("zadd-helper");
-      const zrangebylexNode = helper.getNode("zrangebylex-node");
-      const zrangebylexHelper = helper.getNode("zrangebylex-helper");
-      const zrevrangebylexNode = helper.getNode("zrevrangebylex-node");
-      const zrevrangebylexHelper = helper.getNode("zrevrangebylex-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+        delHelper.on("input", () => {
+          done();
+        });
 
-      delHelper.on("input", () => {
-        done();
-      });
+        zrevrangebylexHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.eql(["b", "a"]);
+            delNode.receive({ topic: "test:zset:bylex" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      zrevrangebylexHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.eql(["b", "a"]);
-          delNode.receive({ topic: "test:zset:bylex" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        zrangebylexHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.eql(["a", "b"]);
+            zrevrangebylexNode.receive({
+              topic: "test:zset:bylex",
+              payload: ["[b", "[a"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      zrangebylexHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.eql(["a", "b"]);
-          zrevrangebylexNode.receive({
+        zaddHelper.on("input", () => {
+          zrangebylexNode.receive({
             topic: "test:zset:bylex",
-            payload: ["[b", "[a"],
+            payload: ["[a", "[b"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      zaddHelper.on("input", () => {
-        zrangebylexNode.receive({
+        zaddNode.receive({
           topic: "test:zset:bylex",
-          payload: ["[a", "[b"],
+          payload: ["0", "a", "0", "b", "0", "c"],
         });
       });
+    }
+  );
 
-      zaddNode.receive({
-        topic: "test:zset:bylex",
-        payload: ["0", "a", "0", "b", "0", "c"],
-      });
-    });
-  });
-
-  it("should ZRANGESTORE copy a range into a new key", function (done) {
+  it("should ZRANGESTORE copy a range into a new key", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -866,101 +881,105 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZPOPMIN and ZPOPMAX pop lowest and highest scored members", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD",
-        topic: "",
-        params: "[]",
-        wires: [["zadd-helper"]],
-      },
-      { id: "zadd-helper", type: "helper" },
-      {
-        id: "zpopmin-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZPOPMIN",
-        name: "ZPOPMIN",
-        topic: "",
-        params: "[]",
-        wires: [["zpopmin-helper"]],
-      },
-      { id: "zpopmin-helper", type: "helper" },
-      {
-        id: "zpopmax-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZPOPMAX",
-        name: "ZPOPMAX",
-        topic: "",
-        params: "[]",
-        wires: [["zpopmax-helper"]],
-      },
-      { id: "zpopmax-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should ZPOPMIN and ZPOPMAX pop lowest and highest scored members",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD",
+          topic: "",
+          params: "[]",
+          wires: [["zadd-helper"]],
+        },
+        { id: "zadd-helper", type: "helper" },
+        {
+          id: "zpopmin-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZPOPMIN",
+          name: "ZPOPMIN",
+          topic: "",
+          params: "[]",
+          wires: [["zpopmin-helper"]],
+        },
+        { id: "zpopmin-helper", type: "helper" },
+        {
+          id: "zpopmax-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZPOPMAX",
+          name: "ZPOPMAX",
+          topic: "",
+          params: "[]",
+          wires: [["zpopmax-helper"]],
+        },
+        { id: "zpopmax-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const zaddNode = helper.getNode("zadd-node");
-      const zaddHelper = helper.getNode("zadd-helper");
-      const zpopminNode = helper.getNode("zpopmin-node");
-      const zpopminHelper = helper.getNode("zpopmin-helper");
-      const zpopmaxNode = helper.getNode("zpopmax-node");
-      const zpopmaxHelper = helper.getNode("zpopmax-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const zaddNode = helper.getNode("zadd-node");
+        const zaddHelper = helper.getNode("zadd-helper");
+        const zpopminNode = helper.getNode("zpopmin-node");
+        const zpopminHelper = helper.getNode("zpopmin-helper");
+        const zpopmaxNode = helper.getNode("zpopmax-node");
+        const zpopmaxHelper = helper.getNode("zpopmax-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        zpopmaxHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal("c");
+            delNode.receive({ topic: "test:zset:zpop" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        zpopminHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal("a");
+            zpopmaxNode.receive({ topic: "test:zset:zpop" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        zaddHelper.on("input", () => {
+          zpopminNode.receive({ topic: "test:zset:zpop" });
+        });
+
+        zaddNode.receive({
+          topic: "test:zset:zpop",
+          payload: ["1", "a", "2", "b", "3", "c"],
+        });
       });
+    }
+  );
 
-      zpopmaxHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal("c");
-          delNode.receive({ topic: "test:zset:zpop" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      zpopminHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal("a");
-          zpopmaxNode.receive({ topic: "test:zset:zpop" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      zaddHelper.on("input", () => {
-        zpopminNode.receive({ topic: "test:zset:zpop" });
-      });
-
-      zaddNode.receive({
-        topic: "test:zset:zpop",
-        payload: ["1", "a", "2", "b", "3", "c"],
-      });
-    });
-  });
-
-  it("should ZRANDMEMBER return a random member", function (done) {
+  it("should ZRANDMEMBER return a random member", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1030,7 +1049,7 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZMSCORE return scores for multiple members", function (done) {
+  it("should ZMSCORE return scores for multiple members", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1104,80 +1123,84 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZREMRANGEBYSCORE remove members in score range", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD",
-        topic: "",
-        params: "[]",
-        wires: [["zadd-helper"]],
-      },
-      { id: "zadd-helper", type: "helper" },
-      {
-        id: "zremrangebyscore-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZREMRANGEBYSCORE",
-        name: "ZREMRANGEBYSCORE",
-        topic: "",
-        params: "[]",
-        wires: [["zremrangebyscore-helper"]],
-      },
-      { id: "zremrangebyscore-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should ZREMRANGEBYSCORE remove members in score range",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD",
+          topic: "",
+          params: "[]",
+          wires: [["zadd-helper"]],
+        },
+        { id: "zadd-helper", type: "helper" },
+        {
+          id: "zremrangebyscore-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZREMRANGEBYSCORE",
+          name: "ZREMRANGEBYSCORE",
+          topic: "",
+          params: "[]",
+          wires: [["zremrangebyscore-helper"]],
+        },
+        { id: "zremrangebyscore-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const zaddNode = helper.getNode("zadd-node");
-      const zaddHelper = helper.getNode("zadd-helper");
-      const zremrangebyscoreNode = helper.getNode("zremrangebyscore-node");
-      const zremrangebyscoreHelper = helper.getNode("zremrangebyscore-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const zaddNode = helper.getNode("zadd-node");
+        const zaddHelper = helper.getNode("zadd-helper");
+        const zremrangebyscoreNode = helper.getNode("zremrangebyscore-node");
+        const zremrangebyscoreHelper = helper.getNode("zremrangebyscore-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      zremrangebyscoreHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(2);
-          delNode.receive({ topic: "test:zset:zrrbs" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        zremrangebyscoreHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(2);
+            delNode.receive({ topic: "test:zset:zrrbs" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      zaddHelper.on("input", () => {
-        zremrangebyscoreNode.receive({
+        zaddHelper.on("input", () => {
+          zremrangebyscoreNode.receive({
+            topic: "test:zset:zrrbs",
+            payload: ["1", "2"],
+          });
+        });
+
+        zaddNode.receive({
           topic: "test:zset:zrrbs",
-          payload: ["1", "2"],
+          payload: ["1", "a", "2", "b", "3", "c"],
         });
       });
+    }
+  );
 
-      zaddNode.receive({
-        topic: "test:zset:zrrbs",
-        payload: ["1", "a", "2", "b", "3", "c"],
-      });
-    });
-  });
-
-  it("should ZREMRANGEBYRANK remove members by rank range", function (done) {
+  it("should ZREMRANGEBYRANK remove members by rank range", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1250,7 +1273,7 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZREMRANGEBYLEX remove members in lex range", function (done) {
+  it("should ZREMRANGEBYLEX remove members in lex range", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1323,7 +1346,7 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZUNIONSTORE and ZUNION combine sorted sets", function (done) {
+  it("should ZUNIONSTORE and ZUNION combine sorted sets", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1443,7 +1466,7 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZINTERSTORE and ZINTER intersect sorted sets", function (done) {
+  it("should ZINTERSTORE and ZINTER intersect sorted sets", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1563,127 +1586,131 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZDIFFSTORE and ZDIFF compute difference of sorted sets", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd1-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD1",
-        topic: "",
-        params: "[]",
-        wires: [["zadd1-helper"]],
-      },
-      { id: "zadd1-helper", type: "helper" },
-      {
-        id: "zadd2-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD2",
-        topic: "",
-        params: "[]",
-        wires: [["zadd2-helper"]],
-      },
-      { id: "zadd2-helper", type: "helper" },
-      {
-        id: "zdiffstore-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZDIFFSTORE",
-        name: "ZDIFFSTORE",
-        topic: "",
-        params: "[]",
-        wires: [["zdiffstore-helper"]],
-      },
-      { id: "zdiffstore-helper", type: "helper" },
-      {
-        id: "zdiff-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZDIFF",
-        name: "ZDIFF",
-        topic: "",
-        params: "[]",
-        wires: [["zdiff-helper"]],
-      },
-      { id: "zdiff-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should ZDIFFSTORE and ZDIFF compute difference of sorted sets",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd1-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD1",
+          topic: "",
+          params: "[]",
+          wires: [["zadd1-helper"]],
+        },
+        { id: "zadd1-helper", type: "helper" },
+        {
+          id: "zadd2-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD2",
+          topic: "",
+          params: "[]",
+          wires: [["zadd2-helper"]],
+        },
+        { id: "zadd2-helper", type: "helper" },
+        {
+          id: "zdiffstore-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZDIFFSTORE",
+          name: "ZDIFFSTORE",
+          topic: "",
+          params: "[]",
+          wires: [["zdiffstore-helper"]],
+        },
+        { id: "zdiffstore-helper", type: "helper" },
+        {
+          id: "zdiff-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZDIFF",
+          name: "ZDIFF",
+          topic: "",
+          params: "[]",
+          wires: [["zdiff-helper"]],
+        },
+        { id: "zdiff-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const zadd1Node = helper.getNode("zadd1-node");
-      const zadd1Helper = helper.getNode("zadd1-helper");
-      const zadd2Node = helper.getNode("zadd2-node");
-      const zadd2Helper = helper.getNode("zadd2-helper");
-      const zdiffstoreNode = helper.getNode("zdiffstore-node");
-      const zdiffstoreHelper = helper.getNode("zdiffstore-helper");
-      const zdiffNode = helper.getNode("zdiff-node");
-      const zdiffHelper = helper.getNode("zdiff-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const zadd1Node = helper.getNode("zadd1-node");
+        const zadd1Helper = helper.getNode("zadd1-helper");
+        const zadd2Node = helper.getNode("zadd2-node");
+        const zadd2Helper = helper.getNode("zadd2-helper");
+        const zdiffstoreNode = helper.getNode("zdiffstore-node");
+        const zdiffstoreHelper = helper.getNode("zdiffstore-helper");
+        const zdiffNode = helper.getNode("zdiff-node");
+        const zdiffHelper = helper.getNode("zdiff-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      zdiffHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload.should.containEql("a");
-          delNode.receive({
-            payload: ["test:zset:zds1", "test:zset:zds2", "test:zset:zdsdst"],
-          });
-        } catch (err) {
-          done(err);
-        }
-      });
+        zdiffHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload.should.containEql("a");
+            delNode.receive({
+              payload: ["test:zset:zds1", "test:zset:zds2", "test:zset:zdsdst"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      zdiffstoreHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(1);
-          zdiffNode.receive({
+        zdiffstoreHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(1);
+            zdiffNode.receive({
+              payload: ["2", "test:zset:zds1", "test:zset:zds2"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        zadd2Helper.on("input", () => {
+          zdiffstoreNode.receive({
+            topic: "test:zset:zdsdst",
             payload: ["2", "test:zset:zds1", "test:zset:zds2"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      zadd2Helper.on("input", () => {
-        zdiffstoreNode.receive({
-          topic: "test:zset:zdsdst",
-          payload: ["2", "test:zset:zds1", "test:zset:zds2"],
+        zadd1Helper.on("input", () => {
+          zadd2Node.receive({
+            topic: "test:zset:zds2",
+            payload: ["2", "b"],
+          });
+        });
+
+        zadd1Node.receive({
+          topic: "test:zset:zds1",
+          payload: ["1", "a", "2", "b"],
         });
       });
+    }
+  );
 
-      zadd1Helper.on("input", () => {
-        zadd2Node.receive({
-          topic: "test:zset:zds2",
-          payload: ["2", "b"],
-        });
-      });
-
-      zadd1Node.receive({
-        topic: "test:zset:zds1",
-        payload: ["1", "a", "2", "b"],
-      });
-    });
-  });
-
-  it("should ZSCAN iterate over sorted set members", function (done) {
+  it("should ZSCAN iterate over sorted set members", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1755,345 +1782,365 @@ describe("Sorted Set commands", function () {
     });
   });
 
-  it("should ZINTERCARD return the count of intersection members", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd1-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD1",
-        topic: "",
-        params: "[]",
-        wires: [["zadd1-helper"]],
-      },
-      { id: "zadd1-helper", type: "helper" },
-      {
-        id: "zadd2-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD2",
-        topic: "",
-        params: "[]",
-        wires: [["zadd2-helper"]],
-      },
-      { id: "zadd2-helper", type: "helper" },
-      {
-        id: "zintercard-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZINTERCARD",
-        name: "ZINTERCARD",
-        topic: "",
-        params: "[]",
-        wires: [["zintercard-helper"]],
-      },
-      { id: "zintercard-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should ZINTERCARD return the count of intersection members",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd1-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD1",
+          topic: "",
+          params: "[]",
+          wires: [["zadd1-helper"]],
+        },
+        { id: "zadd1-helper", type: "helper" },
+        {
+          id: "zadd2-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD2",
+          topic: "",
+          params: "[]",
+          wires: [["zadd2-helper"]],
+        },
+        { id: "zadd2-helper", type: "helper" },
+        {
+          id: "zintercard-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZINTERCARD",
+          name: "ZINTERCARD",
+          topic: "",
+          params: "[]",
+          wires: [["zintercard-helper"]],
+        },
+        { id: "zintercard-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const zadd1Node = helper.getNode("zadd1-node");
-      const zadd1Helper = helper.getNode("zadd1-helper");
-      const zadd2Node = helper.getNode("zadd2-node");
-      const zadd2Helper = helper.getNode("zadd2-helper");
-      const zintercardNode = helper.getNode("zintercard-node");
-      const zintercardHelper = helper.getNode("zintercard-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const zadd1Node = helper.getNode("zadd1-node");
+        const zadd1Helper = helper.getNode("zadd1-helper");
+        const zadd2Node = helper.getNode("zadd2-node");
+        const zadd2Helper = helper.getNode("zadd2-helper");
+        const zintercardNode = helper.getNode("zintercard-node");
+        const zintercardHelper = helper.getNode("zintercard-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      zintercardHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(1);
-          delNode.receive({
-            payload: ["test:zset:zic1", "test:zset:zic2"],
+        zintercardHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(1);
+            delNode.receive({
+              payload: ["test:zset:zic1", "test:zset:zic2"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        zadd2Helper.on("input", () => {
+          zintercardNode.receive({
+            payload: ["2", "test:zset:zic1", "test:zset:zic2"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      zadd2Helper.on("input", () => {
-        zintercardNode.receive({
-          payload: ["2", "test:zset:zic1", "test:zset:zic2"],
+        zadd1Helper.on("input", () => {
+          zadd2Node.receive({
+            topic: "test:zset:zic2",
+            payload: ["1", "b", "2", "c"],
+          });
+        });
+
+        zadd1Node.receive({
+          topic: "test:zset:zic1",
+          payload: ["1", "a", "2", "b"],
         });
       });
+    }
+  );
 
-      zadd1Helper.on("input", () => {
-        zadd2Node.receive({
-          topic: "test:zset:zic2",
-          payload: ["1", "b", "2", "c"],
-        });
-      });
+  it(
+    "should ZMPOP pop the minimum element from a sorted set",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD",
+          topic: "",
+          params: "[]",
+          wires: [["zadd-helper"]],
+        },
+        { id: "zadd-helper", type: "helper" },
+        {
+          id: "zmpop-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZMPOP",
+          name: "ZMPOP",
+          topic: "",
+          params: "[]",
+          wires: [["zmpop-helper"]],
+        },
+        { id: "zmpop-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-      zadd1Node.receive({
-        topic: "test:zset:zic1",
-        payload: ["1", "a", "2", "b"],
-      });
-    });
-  });
+      helper.load(redisNode, flow, () => {
+        const zaddNode = helper.getNode("zadd-node");
+        const zaddHelper = helper.getNode("zadd-helper");
+        const zmpopNode = helper.getNode("zmpop-node");
+        const zmpopHelper = helper.getNode("zmpop-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-  it("should ZMPOP pop the minimum element from a sorted set", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD",
-        topic: "",
-        params: "[]",
-        wires: [["zadd-helper"]],
-      },
-      { id: "zadd-helper", type: "helper" },
-      {
-        id: "zmpop-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZMPOP",
-        name: "ZMPOP",
-        topic: "",
-        params: "[]",
-        wires: [["zmpop-helper"]],
-      },
-      { id: "zmpop-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
-
-    helper.load(redisNode, flow, () => {
-      const zaddNode = helper.getNode("zadd-node");
-      const zaddHelper = helper.getNode("zadd-helper");
-      const zmpopNode = helper.getNode("zmpop-node");
-      const zmpopHelper = helper.getNode("zmpop-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
-
-      delHelper.on("input", () => {
-        done();
-      });
-
-      zmpopHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal("test:zset:zmpop");
-          msg.payload[1].should.be.an.Array();
-          msg.payload[1][0][0].should.equal("a");
-          delNode.receive({ topic: "test:zset:zmpop" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      zaddHelper.on("input", () => {
-        zmpopNode.receive({
-          payload: ["1", "test:zset:zmpop", "MIN"],
-        });
-      });
-
-      zaddNode.receive({
-        topic: "test:zset:zmpop",
-        payload: ["1", "a", "2", "b"],
-      });
-    });
-  });
-
-  it("should BZMPOP return immediately when sorted set has data", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD",
-        topic: "",
-        params: "[]",
-        wires: [["zadd-helper"]],
-      },
-      { id: "zadd-helper", type: "helper" },
-      {
-        id: "bzmpop-node",
-        type: "redis-command",
-        server: "config1",
-        command: "BZMPOP",
-        name: "BZMPOP",
-        block: true,
-        topic: "",
-        params: "[]",
-        wires: [["bzmpop-helper"]],
-      },
-      { id: "bzmpop-helper", type: "helper" },
-    ];
-
-    helper.load(redisNode, flow, () => {
-      const zaddNode = helper.getNode("zadd-node");
-      const zaddHelper = helper.getNode("zadd-helper");
-      const bzmpopNode = helper.getNode("bzmpop-node");
-      const bzmpopHelper = helper.getNode("bzmpop-helper");
-
-      bzmpopHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.not.be.null();
-          msg.payload.should.be.an.Array();
+        delHelper.on("input", () => {
           done();
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      zaddHelper.on("input", () => {
-        bzmpopNode.receive({
-          payload: ["1", "1", "test:zset:bzmpop", "MIN"],
+        zmpopHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal("test:zset:zmpop");
+            msg.payload[1].should.be.an.Array();
+            msg.payload[1][0][0].should.equal("a");
+            delNode.receive({ topic: "test:zset:zmpop" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        zaddHelper.on("input", () => {
+          zmpopNode.receive({
+            payload: ["1", "test:zset:zmpop", "MIN"],
+          });
+        });
+
+        zaddNode.receive({
+          topic: "test:zset:zmpop",
+          payload: ["1", "a", "2", "b"],
         });
       });
+    }
+  );
 
-      zaddNode.receive({
-        topic: "test:zset:bzmpop",
-        payload: ["1", "a"],
-      });
-    });
-  });
+  it(
+    "should BZMPOP return immediately when sorted set has data",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD",
+          topic: "",
+          params: "[]",
+          wires: [["zadd-helper"]],
+        },
+        { id: "zadd-helper", type: "helper" },
+        {
+          id: "bzmpop-node",
+          type: "redis-command",
+          server: "config1",
+          command: "BZMPOP",
+          name: "BZMPOP",
+          block: true,
+          topic: "",
+          params: "[]",
+          wires: [["bzmpop-helper"]],
+        },
+        { id: "bzmpop-helper", type: "helper" },
+      ];
 
-  it("should BZPOPMIN return immediately when sorted set has data", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD",
-        topic: "",
-        params: "[]",
-        wires: [["zadd-helper"]],
-      },
-      { id: "zadd-helper", type: "helper" },
-      {
-        id: "bzpopmin-node",
-        type: "redis-command",
-        server: "config1",
-        command: "BZPOPMIN",
-        name: "BZPOPMIN",
-        block: true,
-        topic: "",
-        params: "[]",
-        wires: [["bzpopmin-helper"]],
-      },
-      { id: "bzpopmin-helper", type: "helper" },
-    ];
+      helper.load(redisNode, flow, () => {
+        const zaddNode = helper.getNode("zadd-node");
+        const zaddHelper = helper.getNode("zadd-helper");
+        const bzmpopNode = helper.getNode("bzmpop-node");
+        const bzmpopHelper = helper.getNode("bzmpop-helper");
 
-    helper.load(redisNode, flow, () => {
-      const zaddNode = helper.getNode("zadd-node");
-      const zaddHelper = helper.getNode("zadd-helper");
-      const bzpopminNode = helper.getNode("bzpopmin-node");
-      const bzpopminHelper = helper.getNode("bzpopmin-helper");
+        bzmpopHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.not.be.null();
+            msg.payload.should.be.an.Array();
+            done();
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      bzpopminHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal("test:zset:bzpopmin");
-          msg.payload[1].should.equal("a");
-          done();
-        } catch (err) {
-          done(err);
-        }
-      });
+        zaddHelper.on("input", () => {
+          bzmpopNode.receive({
+            payload: ["1", "1", "test:zset:bzmpop", "MIN"],
+          });
+        });
 
-      zaddHelper.on("input", () => {
-        bzpopminNode.receive({
-          payload: ["test:zset:bzpopmin", "1"],
+        zaddNode.receive({
+          topic: "test:zset:bzmpop",
+          payload: ["1", "a"],
         });
       });
+    }
+  );
 
-      zaddNode.receive({
-        topic: "test:zset:bzpopmin",
-        payload: ["1", "a", "2", "b"],
-      });
-    });
-  });
+  it(
+    "should BZPOPMIN return immediately when sorted set has data",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD",
+          topic: "",
+          params: "[]",
+          wires: [["zadd-helper"]],
+        },
+        { id: "zadd-helper", type: "helper" },
+        {
+          id: "bzpopmin-node",
+          type: "redis-command",
+          server: "config1",
+          command: "BZPOPMIN",
+          name: "BZPOPMIN",
+          block: true,
+          topic: "",
+          params: "[]",
+          wires: [["bzpopmin-helper"]],
+        },
+        { id: "bzpopmin-helper", type: "helper" },
+      ];
 
-  it("should BZPOPMAX return immediately when sorted set has data", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "zadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "ZADD",
-        name: "ZADD",
-        topic: "",
-        params: "[]",
-        wires: [["zadd-helper"]],
-      },
-      { id: "zadd-helper", type: "helper" },
-      {
-        id: "bzpopmax-node",
-        type: "redis-command",
-        server: "config1",
-        command: "BZPOPMAX",
-        name: "BZPOPMAX",
-        block: true,
-        topic: "",
-        params: "[]",
-        wires: [["bzpopmax-helper"]],
-      },
-      { id: "bzpopmax-helper", type: "helper" },
-    ];
+      helper.load(redisNode, flow, () => {
+        const zaddNode = helper.getNode("zadd-node");
+        const zaddHelper = helper.getNode("zadd-helper");
+        const bzpopminNode = helper.getNode("bzpopmin-node");
+        const bzpopminHelper = helper.getNode("bzpopmin-helper");
 
-    helper.load(redisNode, flow, () => {
-      const zaddNode = helper.getNode("zadd-node");
-      const zaddHelper = helper.getNode("zadd-helper");
-      const bzpopmaxNode = helper.getNode("bzpopmax-node");
-      const bzpopmaxHelper = helper.getNode("bzpopmax-helper");
+        bzpopminHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal("test:zset:bzpopmin");
+            msg.payload[1].should.equal("a");
+            done();
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      bzpopmaxHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal("test:zset:bzpopmax");
-          msg.payload[1].should.equal("b");
-          done();
-        } catch (err) {
-          done(err);
-        }
-      });
+        zaddHelper.on("input", () => {
+          bzpopminNode.receive({
+            payload: ["test:zset:bzpopmin", "1"],
+          });
+        });
 
-      zaddHelper.on("input", () => {
-        bzpopmaxNode.receive({
-          payload: ["test:zset:bzpopmax", "1"],
+        zaddNode.receive({
+          topic: "test:zset:bzpopmin",
+          payload: ["1", "a", "2", "b"],
         });
       });
+    }
+  );
 
-      zaddNode.receive({
-        topic: "test:zset:bzpopmax",
-        payload: ["1", "a", "2", "b"],
+  it(
+    "should BZPOPMAX return immediately when sorted set has data",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "zadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "ZADD",
+          name: "ZADD",
+          topic: "",
+          params: "[]",
+          wires: [["zadd-helper"]],
+        },
+        { id: "zadd-helper", type: "helper" },
+        {
+          id: "bzpopmax-node",
+          type: "redis-command",
+          server: "config1",
+          command: "BZPOPMAX",
+          name: "BZPOPMAX",
+          block: true,
+          topic: "",
+          params: "[]",
+          wires: [["bzpopmax-helper"]],
+        },
+        { id: "bzpopmax-helper", type: "helper" },
+      ];
+
+      helper.load(redisNode, flow, () => {
+        const zaddNode = helper.getNode("zadd-node");
+        const zaddHelper = helper.getNode("zadd-helper");
+        const bzpopmaxNode = helper.getNode("bzpopmax-node");
+        const bzpopmaxHelper = helper.getNode("bzpopmax-helper");
+
+        bzpopmaxHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal("test:zset:bzpopmax");
+            msg.payload[1].should.equal("b");
+            done();
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        zaddHelper.on("input", () => {
+          bzpopmaxNode.receive({
+            payload: ["test:zset:bzpopmax", "1"],
+          });
+        });
+
+        zaddNode.receive({
+          topic: "test:zset:bzpopmax",
+          payload: ["1", "a", "2", "b"],
+        });
       });
-    });
-  });
+    }
+  );
 });

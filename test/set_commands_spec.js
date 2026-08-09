@@ -1,3 +1,4 @@
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { isCommandSupported } = require("./helpers/capability");
@@ -7,16 +8,14 @@ const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
 
 helper.init(require.resolve("node-red"));
 
-describe("Set commands", function () {
-  this.timeout(5000);
-
+describe("Set commands", () => {
   const configNode = redisConfigNode("config1", "Local");
 
-  beforeEach((done) => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => {
       helper.stopServer(() => {
         cleanupKeys("test:set:*", done);
@@ -24,7 +23,7 @@ describe("Set commands", function () {
     });
   });
 
-  it("should SADD members and SMEMBERS return them all", function (done) {
+  it("should SADD members and SMEMBERS return them all", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -99,7 +98,7 @@ describe("Set commands", function () {
     });
   });
 
-  it("should SREM remove members and SCARD return count", function (done) {
+  it("should SREM remove members and SCARD return count", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -188,7 +187,7 @@ describe("Set commands", function () {
     });
   });
 
-  it("should SISMEMBER and SMISMEMBER check membership", function (done) {
+  it("should SISMEMBER and SMISMEMBER check membership", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -284,7 +283,7 @@ describe("Set commands", function () {
     });
   });
 
-  it("should SUNION return union of multiple sets", function (done) {
+  it("should SUNION return union of multiple sets", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -379,96 +378,100 @@ describe("Set commands", function () {
     });
   });
 
-  it("should SUNIONSTORE store union result into destination", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "sadd1-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SADD",
-        name: "SADD1",
-        topic: "",
-        params: "[]",
-        wires: [["sadd1-helper"]],
-      },
-      { id: "sadd1-helper", type: "helper" },
-      {
-        id: "sadd2-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SADD",
-        name: "SADD2",
-        topic: "",
-        params: "[]",
-        wires: [["sadd2-helper"]],
-      },
-      { id: "sadd2-helper", type: "helper" },
-      {
-        id: "sunionstore-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SUNIONSTORE",
-        name: "SUNIONSTORE",
-        topic: "",
-        params: "[]",
-        wires: [["sunionstore-helper"]],
-      },
-      { id: "sunionstore-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should SUNIONSTORE store union result into destination",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "sadd1-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SADD",
+          name: "SADD1",
+          topic: "",
+          params: "[]",
+          wires: [["sadd1-helper"]],
+        },
+        { id: "sadd1-helper", type: "helper" },
+        {
+          id: "sadd2-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SADD",
+          name: "SADD2",
+          topic: "",
+          params: "[]",
+          wires: [["sadd2-helper"]],
+        },
+        { id: "sadd2-helper", type: "helper" },
+        {
+          id: "sunionstore-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SUNIONSTORE",
+          name: "SUNIONSTORE",
+          topic: "",
+          params: "[]",
+          wires: [["sunionstore-helper"]],
+        },
+        { id: "sunionstore-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const sadd1Node = helper.getNode("sadd1-node");
-      const sadd1Helper = helper.getNode("sadd1-helper");
-      const sadd2Node = helper.getNode("sadd2-node");
-      const sadd2Helper = helper.getNode("sadd2-helper");
-      const sunionStoreNode = helper.getNode("sunionstore-node");
-      const sunionStoreHelper = helper.getNode("sunionstore-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const sadd1Node = helper.getNode("sadd1-node");
+        const sadd1Helper = helper.getNode("sadd1-helper");
+        const sadd2Node = helper.getNode("sadd2-node");
+        const sadd2Helper = helper.getNode("sadd2-helper");
+        const sunionStoreNode = helper.getNode("sunionstore-node");
+        const sunionStoreHelper = helper.getNode("sunionstore-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
-
-      sunionStoreHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(4);
-          delNode.receive({
-            payload: ["test:set:sus1", "test:set:sus2", "test:set:sudst"],
-          });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      sadd2Helper.on("input", () => {
-        sunionStoreNode.receive({
-          topic: "test:set:sudst",
-          payload: ["test:set:sus1", "test:set:sus2"],
+        delHelper.on("input", () => {
+          done();
         });
+
+        sunionStoreHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(4);
+            delNode.receive({
+              payload: ["test:set:sus1", "test:set:sus2", "test:set:sudst"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        sadd2Helper.on("input", () => {
+          sunionStoreNode.receive({
+            topic: "test:set:sudst",
+            payload: ["test:set:sus1", "test:set:sus2"],
+          });
+        });
+
+        sadd1Helper.on("input", () => {
+          sadd2Node.receive({ topic: "test:set:sus2", payload: ["c", "d"] });
+        });
+
+        sadd1Node.receive({ topic: "test:set:sus1", payload: ["a", "b"] });
       });
+    }
+  );
 
-      sadd1Helper.on("input", () => {
-        sadd2Node.receive({ topic: "test:set:sus2", payload: ["c", "d"] });
-      });
-
-      sadd1Node.receive({ topic: "test:set:sus1", payload: ["a", "b"] });
-    });
-  });
-
-  it("should SINTER return intersection of multiple sets", function (done) {
+  it("should SINTER return intersection of multiple sets", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -565,196 +568,204 @@ describe("Set commands", function () {
     });
   });
 
-  it("should SINTERSTORE store intersection into destination", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "sadd1-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SADD",
-        name: "SADD1",
-        topic: "",
-        params: "[]",
-        wires: [["sadd1-helper"]],
-      },
-      { id: "sadd1-helper", type: "helper" },
-      {
-        id: "sadd2-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SADD",
-        name: "SADD2",
-        topic: "",
-        params: "[]",
-        wires: [["sadd2-helper"]],
-      },
-      { id: "sadd2-helper", type: "helper" },
-      {
-        id: "sinterstore-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SINTERSTORE",
-        name: "SINTERSTORE",
-        topic: "",
-        params: "[]",
-        wires: [["sinterstore-helper"]],
-      },
-      { id: "sinterstore-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should SINTERSTORE store intersection into destination",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "sadd1-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SADD",
+          name: "SADD1",
+          topic: "",
+          params: "[]",
+          wires: [["sadd1-helper"]],
+        },
+        { id: "sadd1-helper", type: "helper" },
+        {
+          id: "sadd2-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SADD",
+          name: "SADD2",
+          topic: "",
+          params: "[]",
+          wires: [["sadd2-helper"]],
+        },
+        { id: "sadd2-helper", type: "helper" },
+        {
+          id: "sinterstore-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SINTERSTORE",
+          name: "SINTERSTORE",
+          topic: "",
+          params: "[]",
+          wires: [["sinterstore-helper"]],
+        },
+        { id: "sinterstore-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const sadd1Node = helper.getNode("sadd1-node");
-      const sadd1Helper = helper.getNode("sadd1-helper");
-      const sadd2Node = helper.getNode("sadd2-node");
-      const sadd2Helper = helper.getNode("sadd2-helper");
-      const sinterstoreNode = helper.getNode("sinterstore-node");
-      const sinterstoreHelper = helper.getNode("sinterstore-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const sadd1Node = helper.getNode("sadd1-node");
+        const sadd1Helper = helper.getNode("sadd1-helper");
+        const sadd2Node = helper.getNode("sadd2-node");
+        const sadd2Helper = helper.getNode("sadd2-helper");
+        const sinterstoreNode = helper.getNode("sinterstore-node");
+        const sinterstoreHelper = helper.getNode("sinterstore-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      sinterstoreHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(2);
-          delNode.receive({
-            payload: ["test:set:sis1", "test:set:sis2", "test:set:sisdst"],
+        sinterstoreHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(2);
+            delNode.receive({
+              payload: ["test:set:sis1", "test:set:sis2", "test:set:sisdst"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        sadd2Helper.on("input", () => {
+          sinterstoreNode.receive({
+            topic: "test:set:sisdst",
+            payload: ["test:set:sis1", "test:set:sis2"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      sadd2Helper.on("input", () => {
-        sinterstoreNode.receive({
-          topic: "test:set:sisdst",
-          payload: ["test:set:sis1", "test:set:sis2"],
         });
-      });
 
-      sadd1Helper.on("input", () => {
-        sadd2Node.receive({
-          topic: "test:set:sis2",
-          payload: ["b", "c", "d"],
-        });
-      });
-
-      sadd1Node.receive({
-        topic: "test:set:sis1",
-        payload: ["a", "b", "c"],
-      });
-    });
-  });
-
-  it("should SINTERCARD return count of intersection members", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "sadd1-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SADD",
-        name: "SADD1",
-        topic: "",
-        params: "[]",
-        wires: [["sadd1-helper"]],
-      },
-      { id: "sadd1-helper", type: "helper" },
-      {
-        id: "sadd2-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SADD",
-        name: "SADD2",
-        topic: "",
-        params: "[]",
-        wires: [["sadd2-helper"]],
-      },
-      { id: "sadd2-helper", type: "helper" },
-      {
-        id: "sintercard-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SINTERCARD",
-        name: "SINTERCARD",
-        topic: "",
-        params: "[]",
-        wires: [["sintercard-helper"]],
-      },
-      { id: "sintercard-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
-
-    helper.load(redisNode, flow, () => {
-      const sadd1Node = helper.getNode("sadd1-node");
-      const sadd1Helper = helper.getNode("sadd1-helper");
-      const sadd2Node = helper.getNode("sadd2-node");
-      const sadd2Helper = helper.getNode("sadd2-helper");
-      const sintercardNode = helper.getNode("sintercard-node");
-      const sintercardHelper = helper.getNode("sintercard-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
-
-      delHelper.on("input", () => {
-        done();
-      });
-
-      sintercardHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(2);
-          delNode.receive({
-            payload: ["test:set:sic1", "test:set:sic2"],
+        sadd1Helper.on("input", () => {
+          sadd2Node.receive({
+            topic: "test:set:sis2",
+            payload: ["b", "c", "d"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      sadd2Helper.on("input", () => {
-        sintercardNode.receive({
-          payload: ["2", "test:set:sic1", "test:set:sic2"],
+        sadd1Node.receive({
+          topic: "test:set:sis1",
+          payload: ["a", "b", "c"],
         });
       });
+    }
+  );
 
-      sadd1Helper.on("input", () => {
-        sadd2Node.receive({
-          topic: "test:set:sic2",
-          payload: ["b", "c", "d"],
+  it(
+    "should SINTERCARD return count of intersection members",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "sadd1-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SADD",
+          name: "SADD1",
+          topic: "",
+          params: "[]",
+          wires: [["sadd1-helper"]],
+        },
+        { id: "sadd1-helper", type: "helper" },
+        {
+          id: "sadd2-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SADD",
+          name: "SADD2",
+          topic: "",
+          params: "[]",
+          wires: [["sadd2-helper"]],
+        },
+        { id: "sadd2-helper", type: "helper" },
+        {
+          id: "sintercard-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SINTERCARD",
+          name: "SINTERCARD",
+          topic: "",
+          params: "[]",
+          wires: [["sintercard-helper"]],
+        },
+        { id: "sintercard-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
+
+      helper.load(redisNode, flow, () => {
+        const sadd1Node = helper.getNode("sadd1-node");
+        const sadd1Helper = helper.getNode("sadd1-helper");
+        const sadd2Node = helper.getNode("sadd2-node");
+        const sadd2Helper = helper.getNode("sadd2-helper");
+        const sintercardNode = helper.getNode("sintercard-node");
+        const sintercardHelper = helper.getNode("sintercard-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
+
+        delHelper.on("input", () => {
+          done();
+        });
+
+        sintercardHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(2);
+            delNode.receive({
+              payload: ["test:set:sic1", "test:set:sic2"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        sadd2Helper.on("input", () => {
+          sintercardNode.receive({
+            payload: ["2", "test:set:sic1", "test:set:sic2"],
+          });
+        });
+
+        sadd1Helper.on("input", () => {
+          sadd2Node.receive({
+            topic: "test:set:sic2",
+            payload: ["b", "c", "d"],
+          });
+        });
+
+        sadd1Node.receive({
+          topic: "test:set:sic1",
+          payload: ["a", "b", "c"],
         });
       });
+    }
+  );
 
-      sadd1Node.receive({
-        topic: "test:set:sic1",
-        payload: ["a", "b", "c"],
-      });
-    });
-  });
-
-  it("should SDIFF return difference between sets", function (done) {
+  it("should SDIFF return difference between sets", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -850,7 +861,7 @@ describe("Set commands", function () {
     });
   });
 
-  it("should SDIFFSTORE store difference into destination", function (done) {
+  it("should SDIFFSTORE store difference into destination", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -945,7 +956,7 @@ describe("Set commands", function () {
     });
   });
 
-  it("should SPOP remove and return a random member", function (done) {
+  it("should SPOP remove and return a random member", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1012,77 +1023,81 @@ describe("Set commands", function () {
     });
   });
 
-  it("should SRANDMEMBER return random member without removing", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "sadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SADD",
-        name: "SADD",
-        topic: "",
-        params: "[]",
-        wires: [["sadd-helper"]],
-      },
-      { id: "sadd-helper", type: "helper" },
-      {
-        id: "srandmember-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SRANDMEMBER",
-        name: "SRANDMEMBER",
-        topic: "",
-        params: "[]",
-        wires: [["srandmember-helper"]],
-      },
-      { id: "srandmember-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should SRANDMEMBER return random member without removing",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "sadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SADD",
+          name: "SADD",
+          topic: "",
+          params: "[]",
+          wires: [["sadd-helper"]],
+        },
+        { id: "sadd-helper", type: "helper" },
+        {
+          id: "srandmember-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SRANDMEMBER",
+          name: "SRANDMEMBER",
+          topic: "",
+          params: "[]",
+          wires: [["srandmember-helper"]],
+        },
+        { id: "srandmember-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const saddNode = helper.getNode("sadd-node");
-      const saddHelper = helper.getNode("sadd-helper");
-      const srandmemberNode = helper.getNode("srandmember-node");
-      const srandmemberHelper = helper.getNode("srandmember-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const saddNode = helper.getNode("sadd-node");
+        const saddHelper = helper.getNode("sadd-helper");
+        const srandmemberNode = helper.getNode("srandmember-node");
+        const srandmemberHelper = helper.getNode("srandmember-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        srandmemberHelper.on("input", (msg) => {
+          try {
+            ["a", "b", "c"].should.containEql(msg.payload);
+            delNode.receive({ topic: "test:set:srandmember" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        saddHelper.on("input", () => {
+          srandmemberNode.receive({ topic: "test:set:srandmember" });
+        });
+
+        saddNode.receive({
+          topic: "test:set:srandmember",
+          payload: ["a", "b", "c"],
+        });
       });
+    }
+  );
 
-      srandmemberHelper.on("input", (msg) => {
-        try {
-          ["a", "b", "c"].should.containEql(msg.payload);
-          delNode.receive({ topic: "test:set:srandmember" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      saddHelper.on("input", () => {
-        srandmemberNode.receive({ topic: "test:set:srandmember" });
-      });
-
-      saddNode.receive({
-        topic: "test:set:srandmember",
-        payload: ["a", "b", "c"],
-      });
-    });
-  });
-
-  it("should SMOVE move a member from one set to another", function (done) {
+  it("should SMOVE move a member from one set to another", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1157,7 +1172,7 @@ describe("Set commands", function () {
     });
   });
 
-  it("should SSCAN iterate over set members", function (done) {
+  it("should SSCAN iterate over set members", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1231,65 +1246,75 @@ describe("Set commands", function () {
 
   // SUNIONCARD/SDIFFCARD (Redis 8.10): count-only siblings of SUNION/SDIFF, sharing
   // SINTERCARD's numkeys+LIMIT shape.
-  it("SUNIONCARD returns the union size, optionally capped by LIMIT", async function () {
-    if (!(await isCommandSupported("SUNIONCARD"))) {
-      this.skip();
+  it(
+    "SUNIONCARD returns the union size, optionally capped by LIMIT",
+    { timeout: 5000 },
+    async function (t) {
+      if (!(await isCommandSupported("SUNIONCARD"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("sadd1", "SADD"),
+        helperNode("sadd1"),
+        commandNode("sadd2", "SADD"),
+        helperNode("sadd2"),
+        commandNode("sunioncard", "SUNIONCARD"),
+        helperNode("sunioncard"),
+      ]);
+
+      await invoke(helper, "sadd1", { topic: "test:set:sunioncard:1", payload: ["a", "b", "c"] });
+      await invoke(helper, "sadd2", {
+        topic: "test:set:sunioncard:2",
+        payload: ["b", "c", "d", "e"],
+      });
+
+      const total = await invoke(helper, "sunioncard", {
+        payload: ["2", "test:set:sunioncard:1", "test:set:sunioncard:2"],
+      });
+      total.should.equal(5);
+
+      const limited = await invoke(helper, "sunioncard", {
+        payload: ["2", "test:set:sunioncard:1", "test:set:sunioncard:2", "LIMIT", "2"],
+      });
+      limited.should.equal(2);
     }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("sadd1", "SADD"),
-      helperNode("sadd1"),
-      commandNode("sadd2", "SADD"),
-      helperNode("sadd2"),
-      commandNode("sunioncard", "SUNIONCARD"),
-      helperNode("sunioncard"),
-    ]);
+  );
 
-    await invoke(helper, "sadd1", { topic: "test:set:sunioncard:1", payload: ["a", "b", "c"] });
-    await invoke(helper, "sadd2", {
-      topic: "test:set:sunioncard:2",
-      payload: ["b", "c", "d", "e"],
-    });
+  it(
+    "SDIFFCARD returns the difference size, optionally capped by LIMIT",
+    { timeout: 5000 },
+    async function (t) {
+      if (!(await isCommandSupported("SDIFFCARD"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("sadd1", "SADD"),
+        helperNode("sadd1"),
+        commandNode("sadd2", "SADD"),
+        helperNode("sadd2"),
+        commandNode("sdiffcard", "SDIFFCARD"),
+        helperNode("sdiffcard"),
+      ]);
 
-    const total = await invoke(helper, "sunioncard", {
-      payload: ["2", "test:set:sunioncard:1", "test:set:sunioncard:2"],
-    });
-    total.should.equal(5);
+      await invoke(helper, "sadd1", {
+        topic: "test:set:sdiffcard:1",
+        payload: ["a", "b", "c", "d"],
+      });
+      await invoke(helper, "sadd2", { topic: "test:set:sdiffcard:2", payload: ["b", "c"] });
 
-    const limited = await invoke(helper, "sunioncard", {
-      payload: ["2", "test:set:sunioncard:1", "test:set:sunioncard:2", "LIMIT", "2"],
-    });
-    limited.should.equal(2);
-  });
+      const total = await invoke(helper, "sdiffcard", {
+        payload: ["2", "test:set:sdiffcard:1", "test:set:sdiffcard:2"],
+      });
+      total.should.equal(2);
 
-  it("SDIFFCARD returns the difference size, optionally capped by LIMIT", async function () {
-    if (!(await isCommandSupported("SDIFFCARD"))) {
-      this.skip();
+      const limited = await invoke(helper, "sdiffcard", {
+        payload: ["2", "test:set:sdiffcard:1", "test:set:sdiffcard:2", "LIMIT", "1"],
+      });
+      limited.should.equal(1);
     }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("sadd1", "SADD"),
-      helperNode("sadd1"),
-      commandNode("sadd2", "SADD"),
-      helperNode("sadd2"),
-      commandNode("sdiffcard", "SDIFFCARD"),
-      helperNode("sdiffcard"),
-    ]);
-
-    await invoke(helper, "sadd1", {
-      topic: "test:set:sdiffcard:1",
-      payload: ["a", "b", "c", "d"],
-    });
-    await invoke(helper, "sadd2", { topic: "test:set:sdiffcard:2", payload: ["b", "c"] });
-
-    const total = await invoke(helper, "sdiffcard", {
-      payload: ["2", "test:set:sdiffcard:1", "test:set:sdiffcard:2"],
-    });
-    total.should.equal(2);
-
-    const limited = await invoke(helper, "sdiffcard", {
-      payload: ["2", "test:set:sdiffcard:1", "test:set:sdiffcard:2", "LIMIT", "1"],
-    });
-    limited.should.equal(1);
-  });
+  );
 });

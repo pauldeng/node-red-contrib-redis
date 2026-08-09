@@ -8,7 +8,6 @@ const { spawnSync } = require("child_process");
 const Redis = require("ioredis");
 
 const ROOT = path.resolve(__dirname, "..");
-const MOCHA = path.join(ROOT, "node_modules", ".bin", "mocha");
 const AUTH_USERNAME = "node_red";
 const AUTH_PASSWORD = "node-red-pass";
 let DOCKER_COMMAND = ["docker"];
@@ -177,8 +176,11 @@ async function logServerVersion(options, label, expectedEngine) {
   }
 }
 
-function runMocha(specs, env) {
-  run(MOCHA, specs, { env });
+// --test-concurrency=1 keeps spec files running one at a time: they share one live
+// Redis/Valkey server per deployment and mutate global server state (CONFIG SET, ACL
+// users, SLOWLOG), so concurrent files would race on that shared state.
+function runNodeTest(specs, env) {
+  run(process.execPath, ["--test", "--test-concurrency=1", ...specs], { env });
 }
 
 async function runDeployment(deployment) {
@@ -191,7 +193,7 @@ async function runDeployment(deployment) {
     runDocker(dockerCompose(deployment.name, ["up", "-d"]));
     await deployment.wait();
     console.log(`==> ${deployment.name}: running tests`);
-    runMocha(deployment.specs, deployment.env);
+    runNodeTest(deployment.specs, deployment.env);
   } finally {
     console.log(`==> ${deployment.name}: tearing down Docker deployment`);
     tryDocker(dockerCompose(deployment.name, ["down", "-v", "--remove-orphans"]));
@@ -220,7 +222,7 @@ module.exports = {
   quietRedis,
   runDeployment,
   runDeployments,
-  runMocha,
+  runNodeTest,
   sleep,
   unauthEnv,
   waitForRedis,

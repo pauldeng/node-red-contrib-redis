@@ -1,5 +1,6 @@
 "use strict";
 
+const { afterEach, beforeEach, describe, it } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const Redis = require("ioredis");
 const redisNode = require("../redis.js");
@@ -113,14 +114,12 @@ async function runDirectClusterTransaction() {
   }
 }
 
-describeCluster("Redis Cluster auth deployment", function () {
-  this.timeout(20000);
-
-  beforeEach(function (done) {
+describeCluster("Redis Cluster auth deployment", () => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach(function (done) {
+  afterEach((t, done) => {
     helper
       .unload()
       .then(cleanupClusterKeys)
@@ -128,77 +127,83 @@ describeCluster("Redis Cluster auth deployment", function () {
       .catch(done);
   });
 
-  it("runs Redis 7.2-compatible command coverage through redis-command", async function () {
-    await load(
-      helper,
-      redisNode,
-      commandFlow([
-        { id: "ping", command: "PING" },
-        { id: "acl", command: "ACL" },
-        { id: "set", command: "SET" },
-        { id: "get", command: "GET" },
-        { id: "del", command: "DEL" },
-        { id: "exists", command: "EXISTS" },
-        { id: "hset", command: "HSET" },
-        { id: "hgetall", command: "HGETALL" },
-        { id: "xadd", command: "XADD" },
-        { id: "xread", command: "XREAD" },
-        { id: "mset", command: "MSET" },
-        { id: "mget", command: "MGET" },
-      ])
-    );
+  it(
+    "runs Redis 7.2-compatible command coverage through redis-command",
+    { timeout: 20000 },
+    async () => {
+      await load(
+        helper,
+        redisNode,
+        commandFlow([
+          { id: "ping", command: "PING" },
+          { id: "acl", command: "ACL" },
+          { id: "set", command: "SET" },
+          { id: "get", command: "GET" },
+          { id: "del", command: "DEL" },
+          { id: "exists", command: "EXISTS" },
+          { id: "hset", command: "HSET" },
+          { id: "hgetall", command: "HGETALL" },
+          { id: "xadd", command: "XADD" },
+          { id: "xread", command: "XREAD" },
+          { id: "mset", command: "MSET" },
+          { id: "mget", command: "MGET" },
+        ])
+      );
 
-    const stringKey = "test:cluster:{basic}:string";
-    const otherKey = "test:cluster:{basic}:other";
-    const hashKey = "test:cluster:{basic}:hash";
-    const streamKey = "test:cluster:{basic}:stream";
+      const stringKey = "test:cluster:{basic}:string";
+      const otherKey = "test:cluster:{basic}:other";
+      const hashKey = "test:cluster:{basic}:hash";
+      const streamKey = "test:cluster:{basic}:stream";
 
-    (await invoke(helper, "ping")).should.equal("PONG");
-    (await invoke(helper, "acl", { payload: ["WHOAMI"] })).should.equal(process.env.REDIS_USERNAME);
-    (await invoke(helper, "set", { topic: stringKey, payload: "value" })).should.equal("OK");
-    (await invoke(helper, "get", { topic: stringKey })).should.equal("value");
-    (await invoke(helper, "exists", { payload: [stringKey, otherKey] })).should.equal(1);
+      (await invoke(helper, "ping")).should.equal("PONG");
+      (await invoke(helper, "acl", { payload: ["WHOAMI"] })).should.equal(
+        process.env.REDIS_USERNAME
+      );
+      (await invoke(helper, "set", { topic: stringKey, payload: "value" })).should.equal("OK");
+      (await invoke(helper, "get", { topic: stringKey })).should.equal("value");
+      (await invoke(helper, "exists", { payload: [stringKey, otherKey] })).should.equal(1);
 
-    (
-      await invoke(helper, "hset", {
-        topic: hashKey,
-        payload: ["field1", "value1", "field2", "value2"],
-      })
-    ).should.equal(2);
-    const hash = await invoke(helper, "hgetall", { topic: hashKey });
-    hash.should.containEql("field1");
-    hash.should.containEql("value1");
+      (
+        await invoke(helper, "hset", {
+          topic: hashKey,
+          payload: ["field1", "value1", "field2", "value2"],
+        })
+      ).should.equal(2);
+      const hash = await invoke(helper, "hgetall", { topic: hashKey });
+      hash.should.containEql("field1");
+      hash.should.containEql("value1");
 
-    const streamId = await invoke(helper, "xadd", {
-      topic: streamKey,
-      payload: ["*", "field", "value"],
-    });
-    streamId.should.be.a.String();
-    const streamRead = await invoke(helper, "xread", {
-      payload: ["COUNT", "1", "STREAMS", streamKey, "0-0"],
-    });
-    streamRead.should.be.an.Array();
-    streamRead.length.should.equal(1);
+      const streamId = await invoke(helper, "xadd", {
+        topic: streamKey,
+        payload: ["*", "field", "value"],
+      });
+      streamId.should.be.a.String();
+      const streamRead = await invoke(helper, "xread", {
+        payload: ["COUNT", "1", "STREAMS", streamKey, "0-0"],
+      });
+      streamRead.should.be.an.Array();
+      streamRead.length.should.equal(1);
 
-    (
-      await invoke(helper, "mset", {
-        payload: ["test:cluster:{multi}:one", "1", "test:cluster:{multi}:two", "2"],
-      })
-    ).should.equal("OK");
-    (
-      await invoke(helper, "mget", {
-        payload: ["test:cluster:{multi}:one", "test:cluster:{multi}:two"],
-      })
-    ).should.eql(["1", "2"]);
+      (
+        await invoke(helper, "mset", {
+          payload: ["test:cluster:{multi}:one", "1", "test:cluster:{multi}:two", "2"],
+        })
+      ).should.equal("OK");
+      (
+        await invoke(helper, "mget", {
+          payload: ["test:cluster:{multi}:one", "test:cluster:{multi}:two"],
+        })
+      ).should.eql(["1", "2"]);
 
-    (
-      await invoke(helper, "del", {
-        payload: [stringKey, otherKey, hashKey, streamKey],
-      })
-    ).should.be.a.Number();
-  });
+      (
+        await invoke(helper, "del", {
+          payload: [stringKey, otherKey, hashKey, streamKey],
+        })
+      ).should.be.a.Number();
+    }
+  );
 
-  it("fails cross-slot multi-key commands deliberately", async function () {
+  it("fails cross-slot multi-key commands deliberately", { timeout: 20000 }, async () => {
     await load(helper, redisNode, commandFlow([{ id: "mset", command: "MSET" }]));
 
     const err = await expectError(helper, "mset", {
@@ -207,7 +212,7 @@ describeCluster("Redis Cluster auth deployment", function () {
     err.message.should.match(/CROSSSLOT|same slot/i);
   });
 
-  it("runs Redis 7.2 cluster-prone commands with same-slot keys", async function () {
+  it("runs Redis 7.2 cluster-prone commands with same-slot keys", { timeout: 20000 }, async () => {
     const script =
       "redis.call('SET', KEYS[1], ARGV[1]); redis.call('SET', KEYS[2], ARGV[1]); return {redis.call('GET', KEYS[1]), redis.call('GET', KEYS[2])}";
     const scriptSha = await loadScriptOnCluster(script);
@@ -222,133 +227,147 @@ describeCluster("Redis Cluster auth deployment", function () {
     await runDirectClusterTransaction();
   });
 
-  it("rejects Redis 7.2 cluster-prone commands with cross-slot keys", async function () {
-    const script = "return {KEYS[1], KEYS[2]}";
-    const scriptSha = await loadScriptOnCluster(script);
-    await load(helper, redisNode, clusterProneFlow(clusterConfigNode()));
+  it(
+    "rejects Redis 7.2 cluster-prone commands with cross-slot keys",
+    { timeout: 20000 },
+    async () => {
+      const script = "return {KEYS[1], KEYS[2]}";
+      const scriptSha = await loadScriptOnCluster(script);
+      await load(helper, redisNode, clusterProneFlow(clusterConfigNode()));
 
-    await runClusterProneCrossSlotFailures(helper, {
-      prefix: "test:cluster",
-      scriptSha,
-    });
-  });
+      await runClusterProneCrossSlotFailures(helper, {
+        prefix: "test:cluster",
+        scriptSha,
+      });
+    }
+  );
 
   // SUNIONCARD/SDIFFCARD are Redis 8.10-only (this describe block's cluster-prone matrix
   // above is deliberately kept at the Redis 7.2-compatible command surface), so they get
   // their own same-slot/cross-slot coverage here, gated on this cluster actually having them
   // — this spec also runs against the Valkey cluster deployment, which does not.
-  it("runs Redis 8.10 SUNIONCARD/SDIFFCARD with same-slot keys and rejects them cross-slot", async function () {
-    const probe = directCluster();
-    let supported;
-    try {
-      supported = (await probe.call("COMMAND", "INFO", "SUNIONCARD"))[0] !== null;
-    } finally {
-      probe.disconnect();
-    }
-    if (!supported) {
-      this.skip();
-    }
-
-    await load(
-      helper,
-      redisNode,
-      commandFlow([
-        { id: "sadd", command: "SADD" },
-        { id: "sunioncard", command: "SUNIONCARD" },
-        { id: "sdiffcard", command: "SDIFFCARD" },
-      ])
-    );
-
-    const setA = "test:cluster:{8-10}:set-a";
-    const setB = "test:cluster:{8-10}:set-b";
-    await invoke(helper, "sadd", { topic: setA, payload: ["a", "b", "c"] });
-    await invoke(helper, "sadd", { topic: setB, payload: ["b", "c", "d"] });
-
-    (await invoke(helper, "sunioncard", { payload: ["2", setA, setB] })).should.equal(4);
-    (await invoke(helper, "sunioncard", { payload: ["2", setA, setB, "LIMIT", "2"] })).should.equal(
-      2
-    );
-    (await invoke(helper, "sdiffcard", { payload: ["2", setA, setB] })).should.equal(1);
-
-    const crossA = "test:cluster:{slot-a}:set-a";
-    const crossB = "test:cluster:{slot-b}:set-b";
-    const direct = directCluster();
-    try {
-      for (const [id, command] of [
-        ["sunioncard", "SUNIONCARD"],
-        ["sdiffcard", "SDIFFCARD"],
-      ]) {
-        const surfaced = await expectError(helper, id, { payload: ["2", crossA, crossB] });
-        let serverError;
-        try {
-          await direct.call(command, "2", crossA, crossB);
-        } catch (err) {
-          serverError = err;
-        }
-        (serverError instanceof Error).should.equal(true);
-        surfaced.message.should.equal(serverError.message);
+  it(
+    "runs Redis 8.10 SUNIONCARD/SDIFFCARD with same-slot keys and rejects them cross-slot",
+    { timeout: 20000 },
+    async (t) => {
+      const probe = directCluster();
+      let supported;
+      try {
+        supported = (await probe.call("COMMAND", "INFO", "SUNIONCARD"))[0] !== null;
+      } finally {
+        probe.disconnect();
       }
-    } finally {
-      direct.disconnect();
+      if (!supported) {
+        t.skip();
+        return;
+      }
+
+      await load(
+        helper,
+        redisNode,
+        commandFlow([
+          { id: "sadd", command: "SADD" },
+          { id: "sunioncard", command: "SUNIONCARD" },
+          { id: "sdiffcard", command: "SDIFFCARD" },
+        ])
+      );
+
+      const setA = "test:cluster:{8-10}:set-a";
+      const setB = "test:cluster:{8-10}:set-b";
+      await invoke(helper, "sadd", { topic: setA, payload: ["a", "b", "c"] });
+      await invoke(helper, "sadd", { topic: setB, payload: ["b", "c", "d"] });
+
+      (await invoke(helper, "sunioncard", { payload: ["2", setA, setB] })).should.equal(4);
+      (
+        await invoke(helper, "sunioncard", { payload: ["2", setA, setB, "LIMIT", "2"] })
+      ).should.equal(2);
+      (await invoke(helper, "sdiffcard", { payload: ["2", setA, setB] })).should.equal(1);
+
+      const crossA = "test:cluster:{slot-a}:set-a";
+      const crossB = "test:cluster:{slot-b}:set-b";
+      const direct = directCluster();
+      try {
+        for (const [id, command] of [
+          ["sunioncard", "SUNIONCARD"],
+          ["sdiffcard", "SDIFFCARD"],
+        ]) {
+          const surfaced = await expectError(helper, id, { payload: ["2", crossA, crossB] });
+          let serverError;
+          try {
+            await direct.call(command, "2", crossA, crossB);
+          } catch (err) {
+            serverError = err;
+          }
+          (serverError instanceof Error).should.equal(true);
+          surfaced.message.should.equal(serverError.message);
+        }
+      } finally {
+        direct.disconnect();
+      }
     }
-  });
+  );
 
   // Redis 8.10 fixed FT.SEARCH ... LIMIT returning too many results in cluster mode over
   // RESP3 (the protocol this package negotiates by default since the ioredis v6 upgrade).
   // This guards that fix at this package's own protocol boundary: FT.CREATE fans an index
   // out to every shard automatically, so data spread across both masters' slots still needs
   // its coordinator-merged reply capped at exactly LIMIT, not once per shard.
-  it("keeps FT.SEARCH's LIMIT count accurate over RESP3 across cluster shards (Redis 8.10 fix)", async function () {
-    const probe = directCluster();
-    let supported;
-    try {
-      supported = (await probe.call("COMMAND", "INFO", "FT.ALIASLIST"))[0] !== null;
-    } finally {
-      probe.disconnect();
-    }
-    if (!supported) {
-      this.skip();
-    }
-
-    await load(
-      helper,
-      redisNode,
-      commandFlow([
-        { id: "ftcreate", command: "FT.CREATE" },
-        { id: "hset", command: "HSET" },
-        { id: "ftsearch", command: "FT.SEARCH" },
-        { id: "ftdrop", command: "FT.DROPINDEX" },
-      ])
-    );
-
-    const indexName = "test:cluster:ftlimitidx";
-    const prefix = "test:cluster:ftdoc:";
-    await invoke(helper, "ftcreate", {
-      payload: [indexName, "ON", "HASH", "PREFIX", "1", prefix, "SCHEMA", "title", "TEXT"],
-    });
-    try {
-      for (let i = 0; i < 12; i++) {
-        await invoke(helper, "hset", {
-          topic: `${prefix}${i}`,
-          payload: ["title", "hello world"],
-        });
+  it(
+    "keeps FT.SEARCH's LIMIT count accurate over RESP3 across cluster shards (Redis 8.10 fix)",
+    { timeout: 20000 },
+    async (t) => {
+      const probe = directCluster();
+      let supported;
+      try {
+        supported = (await probe.call("COMMAND", "INFO", "FT.ALIASLIST"))[0] !== null;
+      } finally {
+        probe.disconnect();
+      }
+      if (!supported) {
+        t.skip();
+        return;
       }
 
-      const result = await invoke(helper, "ftsearch", {
-        payload: [indexName, "hello", "LIMIT", "0", "5"],
-      });
-      // Every RESP3 map in the reply is flattened to [key, value, key, value, ...] by
-      // ioredis's default legacy reply mapping (FT.SEARCH has no dedicated transformer).
-      const totalResults = result[result.indexOf("total_results") + 1];
-      const results = result[result.indexOf("results") + 1];
-      totalResults.should.equal(12);
-      results.length.should.equal(5);
-    } finally {
-      await invoke(helper, "ftdrop", { payload: [indexName] });
-    }
-  });
+      await load(
+        helper,
+        redisNode,
+        commandFlow([
+          { id: "ftcreate", command: "FT.CREATE" },
+          { id: "hset", command: "HSET" },
+          { id: "ftsearch", command: "FT.SEARCH" },
+          { id: "ftdrop", command: "FT.DROPINDEX" },
+        ])
+      );
 
-  it("supports pub/sub and blocking list input nodes", async function () {
+      const indexName = "test:cluster:ftlimitidx";
+      const prefix = "test:cluster:ftdoc:";
+      await invoke(helper, "ftcreate", {
+        payload: [indexName, "ON", "HASH", "PREFIX", "1", prefix, "SCHEMA", "title", "TEXT"],
+      });
+      try {
+        for (let i = 0; i < 12; i++) {
+          await invoke(helper, "hset", {
+            topic: `${prefix}${i}`,
+            payload: ["title", "hello world"],
+          });
+        }
+
+        const result = await invoke(helper, "ftsearch", {
+          payload: [indexName, "hello", "LIMIT", "0", "5"],
+        });
+        // Every RESP3 map in the reply is flattened to [key, value, key, value, ...] by
+        // ioredis's default legacy reply mapping (FT.SEARCH has no dedicated transformer).
+        const totalResults = result[result.indexOf("total_results") + 1];
+        const results = result[result.indexOf("results") + 1];
+        totalResults.should.equal(12);
+        results.length.should.equal(5);
+      } finally {
+        await invoke(helper, "ftdrop", { payload: [indexName] });
+      }
+    }
+  );
+
+  it("supports pub/sub and blocking list input nodes", { timeout: 20000 }, async () => {
     const channel = "test:cluster:pubsub";
     const listKey = "test:cluster:{blocking}:list";
     const flow = [
@@ -426,185 +445,197 @@ describeCluster("Redis Cluster auth deployment", function () {
     popped.payload.should.equal("queued");
   });
 
-  it("runs same-slot Lua scripts and falls back after SCRIPT FLUSH", async function () {
-    const unstoredFunc = [
-      "redis.call('SET', KEYS[1], ARGV[1])",
-      "redis.call('INCRBY', KEYS[2], ARGV[2])",
-      "redis.call('ZADD', KEYS[3], ARGV[3], ARGV[4])",
-      "return {redis.call('GET', KEYS[1]), redis.call('GET', KEYS[2]), redis.call('ZRANGE', KEYS[3], 0, -1)[1]}",
-    ].join("\n");
-    const storedFunc = "return redis.call('INCR', KEYS[1])";
-    const flow = [
-      clusterConfigNode(),
-      {
-        id: "lua-node",
-        type: "redis-lua-script",
-        server: "config1",
-        name: "cluster-lua",
-        keyval: 3,
-        func: unstoredFunc,
-        stored: false,
-        block: false,
-        wires: [["lua-helper"]],
-      },
-      helperNode("lua"),
-      {
-        id: "stored-node",
-        type: "redis-lua-script",
-        server: "config1",
-        name: "cluster-stored-lua",
-        keyval: 1,
-        func: storedFunc,
-        stored: true,
-        block: false,
-        wires: [["stored-helper"]],
-      },
-      helperNode("stored"),
-    ];
+  it(
+    "runs same-slot Lua scripts and falls back after SCRIPT FLUSH",
+    { timeout: 20000 },
+    async () => {
+      const unstoredFunc = [
+        "redis.call('SET', KEYS[1], ARGV[1])",
+        "redis.call('INCRBY', KEYS[2], ARGV[2])",
+        "redis.call('ZADD', KEYS[3], ARGV[3], ARGV[4])",
+        "return {redis.call('GET', KEYS[1]), redis.call('GET', KEYS[2]), redis.call('ZRANGE', KEYS[3], 0, -1)[1]}",
+      ].join("\n");
+      const storedFunc = "return redis.call('INCR', KEYS[1])";
+      const flow = [
+        clusterConfigNode(),
+        {
+          id: "lua-node",
+          type: "redis-lua-script",
+          server: "config1",
+          name: "cluster-lua",
+          keyval: 3,
+          func: unstoredFunc,
+          stored: false,
+          block: false,
+          wires: [["lua-helper"]],
+        },
+        helperNode("lua"),
+        {
+          id: "stored-node",
+          type: "redis-lua-script",
+          server: "config1",
+          name: "cluster-stored-lua",
+          keyval: 1,
+          func: storedFunc,
+          stored: true,
+          block: false,
+          wires: [["stored-helper"]],
+        },
+        helperNode("stored"),
+      ];
 
-    await load(helper, redisNode, flow);
+      await load(helper, redisNode, flow);
 
-    const result = await invoke(helper, "lua", {
-      payload: [
-        "test:cluster:{lua}:value",
-        "test:cluster:{lua}:counter",
-        "test:cluster:{lua}:zset",
-        "payload",
-        "2",
-        "10",
-        "member",
-      ],
-    });
-    result.should.eql(["payload", "2", "member"]);
+      const result = await invoke(helper, "lua", {
+        payload: [
+          "test:cluster:{lua}:value",
+          "test:cluster:{lua}:counter",
+          "test:cluster:{lua}:zset",
+          "payload",
+          "2",
+          "10",
+          "member",
+        ],
+      });
+      result.should.eql(["payload", "2", "member"]);
 
-    const storedNode = helper.getNode("stored-node");
-    await waitForNodeProp(storedNode, "sha1");
-    (
-      await invoke(helper, "stored", {
-        payload: ["test:cluster:{lua}:stored-counter"],
-      })
-    ).should.equal(1);
+      const storedNode = helper.getNode("stored-node");
+      await waitForNodeProp(storedNode, "sha1");
+      (
+        await invoke(helper, "stored", {
+          payload: ["test:cluster:{lua}:stored-counter"],
+        })
+      ).should.equal(1);
 
-    const cluster = directCluster();
-    try {
-      await Promise.all(cluster.nodes("master").map((node) => node.script("flush")));
-    } finally {
-      cluster.disconnect();
+      const cluster = directCluster();
+      try {
+        await Promise.all(cluster.nodes("master").map((node) => node.script("flush")));
+      } finally {
+        cluster.disconnect();
+      }
+
+      (
+        await invoke(helper, "stored", {
+          payload: ["test:cluster:{lua}:stored-counter"],
+        })
+      ).should.equal(2);
     }
+  );
 
-    (
-      await invoke(helper, "stored", {
-        payload: ["test:cluster:{lua}:stored-counter"],
-      })
-    ).should.equal(2);
-  });
+  it(
+    "runs same-slot FCALL and read-only EVAL through the function/RO models",
+    { timeout: 20000 },
+    async () => {
+      const lib = [
+        "#!lua name=clusterlib",
+        "redis.register_function('clusterfn', function(keys, args) redis.call('SET', keys[1], args[1]); return redis.call('GET', keys[1]) end)",
+      ].join("\n");
+      const flow = [
+        clusterConfigNode(),
+        {
+          id: "fn-node",
+          type: "redis-lua-script",
+          server: "config1",
+          name: "cluster-fn",
+          mode: "function",
+          readonly: false,
+          keyval: 1,
+          func: lib,
+          fname: "clusterfn",
+          block: false,
+          wires: [["fn-helper"]],
+        },
+        helperNode("fn"),
+        {
+          id: "ro-node",
+          type: "redis-lua-script",
+          server: "config1",
+          name: "cluster-ro",
+          mode: "script",
+          readonly: true,
+          stored: false,
+          keyval: 1,
+          func: "return redis.call('GET', KEYS[1])",
+          block: false,
+          wires: [["ro-helper"]],
+        },
+        helperNode("ro"),
+      ];
 
-  it("runs same-slot FCALL and read-only EVAL through the function/RO models", async function () {
-    const lib = [
-      "#!lua name=clusterlib",
-      "redis.register_function('clusterfn', function(keys, args) redis.call('SET', keys[1], args[1]); return redis.call('GET', keys[1]) end)",
-    ].join("\n");
-    const flow = [
-      clusterConfigNode(),
-      {
-        id: "fn-node",
-        type: "redis-lua-script",
-        server: "config1",
-        name: "cluster-fn",
-        mode: "function",
-        readonly: false,
-        keyval: 1,
-        func: lib,
-        fname: "clusterfn",
-        block: false,
-        wires: [["fn-helper"]],
-      },
-      helperNode("fn"),
-      {
-        id: "ro-node",
-        type: "redis-lua-script",
-        server: "config1",
-        name: "cluster-ro",
-        mode: "script",
-        readonly: true,
-        stored: false,
-        keyval: 1,
-        func: "return redis.call('GET', KEYS[1])",
-        block: false,
-        wires: [["ro-helper"]],
-      },
-      helperNode("ro"),
-    ];
+      await load(helper, redisNode, flow);
 
-    await load(helper, redisNode, flow);
+      const fnNode = helper.getNode("fn-node");
+      await waitForNodeProp(fnNode, "libname");
+      (await invoke(helper, "fn", { payload: ["test:cluster:{lua}:fn", "fn-value"] })).should.equal(
+        "fn-value"
+      );
 
-    const fnNode = helper.getNode("fn-node");
-    await waitForNodeProp(fnNode, "libname");
-    (await invoke(helper, "fn", { payload: ["test:cluster:{lua}:fn", "fn-value"] })).should.equal(
-      "fn-value"
-    );
-
-    const cluster = directCluster();
-    try {
-      await cluster.set("test:cluster:{lua}:ro", "ro-value");
-    } finally {
-      cluster.disconnect();
+      const cluster = directCluster();
+      try {
+        await cluster.set("test:cluster:{lua}:ro", "ro-value");
+      } finally {
+        cluster.disconnect();
+      }
+      (await invoke(helper, "ro", { payload: ["test:cluster:{lua}:ro"] })).should.equal("ro-value");
     }
-    (await invoke(helper, "ro", { payload: ["test:cluster:{lua}:ro"] })).should.equal("ro-value");
-  });
+  );
 
-  it("runs block-mode (dedicated connection) Script and Function on the cluster", async function () {
-    // Execution-level coverage only: the server-side dedicated-connection proof
-    // (CLIENT LIST counting by connectionName) lives in scripting_commands_spec
-    // and the sentinel spec — the cluster config path cannot carry an ioredis
-    // connectionName, and the block/shared connection keying in RedisLua is
-    // topology-independent.
-    const lib = [
-      "#!lua name=blockclusterlib",
-      "redis.register_function('blockclusterfn', function(keys, args) redis.call('SET', keys[1], args[1]); return redis.call('GET', keys[1]) end)",
-    ].join("\n");
-    const flow = [
-      clusterConfigNode(),
-      {
-        id: "blk-script-node",
-        type: "redis-lua-script",
-        server: "config1",
-        name: "cluster-block-script",
-        mode: "script",
-        readonly: false,
-        stored: false,
-        keyval: 1,
-        func: "redis.call('SET', KEYS[1], ARGV[1]); return redis.call('GET', KEYS[1])",
-        block: true,
-        wires: [["blk-script-helper"]],
-      },
-      helperNode("blk-script"),
-      {
-        id: "blk-fn-node",
-        type: "redis-lua-script",
-        server: "config1",
-        name: "cluster-block-fn",
-        mode: "function",
-        readonly: false,
-        keyval: 1,
-        func: lib,
-        fname: "blockclusterfn",
-        block: true,
-        wires: [["blk-fn-helper"]],
-      },
-      helperNode("blk-fn"),
-    ];
+  it(
+    "runs block-mode (dedicated connection) Script and Function on the cluster",
+    { timeout: 20000 },
+    async () => {
+      // Execution-level coverage only: the server-side dedicated-connection proof
+      // (CLIENT LIST counting by connectionName) lives in scripting_commands_spec
+      // and the sentinel spec — the cluster config path cannot carry an ioredis
+      // connectionName, and the block/shared connection keying in RedisLua is
+      // topology-independent.
+      const lib = [
+        "#!lua name=blockclusterlib",
+        "redis.register_function('blockclusterfn', function(keys, args) redis.call('SET', keys[1], args[1]); return redis.call('GET', keys[1]) end)",
+      ].join("\n");
+      const flow = [
+        clusterConfigNode(),
+        {
+          id: "blk-script-node",
+          type: "redis-lua-script",
+          server: "config1",
+          name: "cluster-block-script",
+          mode: "script",
+          readonly: false,
+          stored: false,
+          keyval: 1,
+          func: "redis.call('SET', KEYS[1], ARGV[1]); return redis.call('GET', KEYS[1])",
+          block: true,
+          wires: [["blk-script-helper"]],
+        },
+        helperNode("blk-script"),
+        {
+          id: "blk-fn-node",
+          type: "redis-lua-script",
+          server: "config1",
+          name: "cluster-block-fn",
+          mode: "function",
+          readonly: false,
+          keyval: 1,
+          func: lib,
+          fname: "blockclusterfn",
+          block: true,
+          wires: [["blk-fn-helper"]],
+        },
+        helperNode("blk-fn"),
+      ];
 
-    await load(helper, redisNode, flow);
+      await load(helper, redisNode, flow);
 
-    (
-      await invoke(helper, "blk-script", { payload: ["test:cluster:{lua}:blk", "s-value"] })
-    ).should.equal("s-value");
+      (
+        await invoke(helper, "blk-script", { payload: ["test:cluster:{lua}:blk", "s-value"] })
+      ).should.equal("s-value");
 
-    const fnNode = helper.getNode("blk-fn-node");
-    await waitForNodeProp(fnNode, "libname");
-    (
-      await invoke(helper, "blk-fn", { payload: ["test:cluster:{lua}:blkfn", "f-value"] })
-    ).should.equal("f-value");
-  });
+      const fnNode = helper.getNode("blk-fn-node");
+      await waitForNodeProp(fnNode, "libname");
+      (
+        await invoke(helper, "blk-fn", { payload: ["test:cluster:{lua}:blkfn", "f-value"] })
+      ).should.equal("f-value");
+    }
+  );
 });

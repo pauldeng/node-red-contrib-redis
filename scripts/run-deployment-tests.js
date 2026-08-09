@@ -14,7 +14,7 @@ const {
   pullImages,
   quietRedis,
   runDeployments,
-  runMocha,
+  runNodeTest,
   sleep,
   unauthEnv,
   waitForRedis,
@@ -281,7 +281,7 @@ async function main() {
   const memoryDbEnv = requireMemoryDbEnv();
   if (memoryDbEnv) {
     console.log("\n==> memorydb: running AWS MemoryDB tests");
-    runMocha(["test/memorydb_deployment_spec.js"], memoryDbEnv);
+    runNodeTest(["test/memorydb_deployment_spec.js"], memoryDbEnv);
   } else {
     console.log("\n==> memorydb: skipped (MEMORYDB_ENABLED is not 1)");
   }

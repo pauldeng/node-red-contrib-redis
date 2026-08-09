@@ -1,3 +1,4 @@
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { isCommandSupported } = require("./helpers/capability");
@@ -8,16 +9,14 @@ const { waitForBlockedCommand } = require("./helpers/wait");
 
 helper.init(require.resolve("node-red"));
 
-describe("List commands", function () {
-  this.timeout(8000);
-
+describe("List commands", () => {
   const configNode = redisConfigNode("config1", "Local");
 
-  beforeEach((done) => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => {
       helper.stopServer(() => {
         cleanupKeys("test:list:*", done);
@@ -25,83 +24,87 @@ describe("List commands", function () {
     });
   });
 
-  it("should LPUSH elements and LRANGE retrieve all elements", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "lpush-node",
-        type: "redis-command",
-        server: "config1",
-        command: "LPUSH",
-        name: "LPUSH",
-        topic: "",
-        params: "[]",
-        wires: [["lpush-helper"]],
-      },
-      { id: "lpush-helper", type: "helper" },
-      {
-        id: "lrange-node",
-        type: "redis-command",
-        server: "config1",
-        command: "LRANGE",
-        name: "LRANGE",
-        topic: "",
-        params: "[]",
-        wires: [["lrange-helper"]],
-      },
-      { id: "lrange-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should LPUSH elements and LRANGE retrieve all elements",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "lpush-node",
+          type: "redis-command",
+          server: "config1",
+          command: "LPUSH",
+          name: "LPUSH",
+          topic: "",
+          params: "[]",
+          wires: [["lpush-helper"]],
+        },
+        { id: "lpush-helper", type: "helper" },
+        {
+          id: "lrange-node",
+          type: "redis-command",
+          server: "config1",
+          command: "LRANGE",
+          name: "LRANGE",
+          topic: "",
+          params: "[]",
+          wires: [["lrange-helper"]],
+        },
+        { id: "lrange-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const lpushNode = helper.getNode("lpush-node");
-      const lpushHelper = helper.getNode("lpush-helper");
-      const lrangeNode = helper.getNode("lrange-node");
-      const lrangeHelper = helper.getNode("lrange-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const lpushNode = helper.getNode("lpush-node");
+        const lpushHelper = helper.getNode("lpush-helper");
+        const lrangeNode = helper.getNode("lrange-node");
+        const lrangeHelper = helper.getNode("lrange-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        lrangeHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload.should.eql(["c", "b", "a"]);
+            delNode.receive({ topic: "test:list:lpush" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        lpushHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(3);
+            lrangeNode.receive({ topic: "test:list:lpush", payload: ["0", "-1"] });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        lpushNode.receive({
+          topic: "test:list:lpush",
+          payload: ["a", "b", "c"],
+        });
       });
+    }
+  );
 
-      lrangeHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload.should.eql(["c", "b", "a"]);
-          delNode.receive({ topic: "test:list:lpush" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      lpushHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(3);
-          lrangeNode.receive({ topic: "test:list:lpush", payload: ["0", "-1"] });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      lpushNode.receive({
-        topic: "test:list:lpush",
-        payload: ["a", "b", "c"],
-      });
-    });
-  });
-
-  it("should RPUSH elements and RPOP remove from right", function (done) {
+  it("should RPUSH elements and RPOP remove from right", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -176,7 +179,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should LPUSHX and RPUSHX push only to existing lists", function (done) {
+  it("should LPUSHX and RPUSHX push only to existing lists", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -271,7 +274,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should LPOP remove and return head element", function (done) {
+  it("should LPOP remove and return head element", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -341,7 +344,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should LLEN return the number of elements in a list", function (done) {
+  it("should LLEN return the number of elements in a list", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -411,7 +414,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should LINDEX return element at a given position", function (done) {
+  it("should LINDEX return element at a given position", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -481,7 +484,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should LSET overwrite an element at a specific index", function (done) {
+  it("should LSET overwrite an element at a specific index", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -573,7 +576,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should LINSERT add element before a pivot", function (done) {
+  it("should LINSERT add element before a pivot", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -668,7 +671,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should LREM remove occurrences of an element", function (done) {
+  it("should LREM remove occurrences of an element", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -763,7 +766,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should LTRIM trim list to specified range", function (done) {
+  it("should LTRIM trim list to specified range", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -858,7 +861,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should LPOS return index of a matching element", function (done) {
+  it("should LPOS return index of a matching element", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -928,7 +931,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should LMOVE move an element between two lists", function (done) {
+  it("should LMOVE move an element between two lists", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1003,154 +1006,162 @@ describe("List commands", function () {
     });
   });
 
-  it("should RPOPLPUSH move tail of source to head of dest (deprecated)", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "rpush-node",
-        type: "redis-command",
-        server: "config1",
-        command: "RPUSH",
-        name: "RPUSH",
-        topic: "",
-        params: "[]",
-        wires: [["rpush-helper"]],
-      },
-      { id: "rpush-helper", type: "helper" },
-      {
-        id: "rpoplpush-node",
-        type: "redis-command",
-        server: "config1",
-        command: "RPOPLPUSH",
-        name: "RPOPLPUSH",
-        topic: "",
-        params: "[]",
-        wires: [["rpoplpush-helper"]],
-      },
-      { id: "rpoplpush-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should RPOPLPUSH move tail of source to head of dest (deprecated)",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "rpush-node",
+          type: "redis-command",
+          server: "config1",
+          command: "RPUSH",
+          name: "RPUSH",
+          topic: "",
+          params: "[]",
+          wires: [["rpush-helper"]],
+        },
+        { id: "rpush-helper", type: "helper" },
+        {
+          id: "rpoplpush-node",
+          type: "redis-command",
+          server: "config1",
+          command: "RPOPLPUSH",
+          name: "RPOPLPUSH",
+          topic: "",
+          params: "[]",
+          wires: [["rpoplpush-helper"]],
+        },
+        { id: "rpoplpush-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const rpushNode = helper.getNode("rpush-node");
-      const rpushHelper = helper.getNode("rpush-helper");
-      const rpoplpushNode = helper.getNode("rpoplpush-node");
-      const rpoplpushHelper = helper.getNode("rpoplpush-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const rpushNode = helper.getNode("rpush-node");
+        const rpushHelper = helper.getNode("rpush-helper");
+        const rpoplpushNode = helper.getNode("rpoplpush-node");
+        const rpoplpushHelper = helper.getNode("rpoplpush-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      rpoplpushHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("b");
-          delNode.receive({
-            payload: ["test:list:rpoplpushsrc", "test:list:rpoplpushdst"],
+        rpoplpushHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("b");
+            delNode.receive({
+              payload: ["test:list:rpoplpushsrc", "test:list:rpoplpushdst"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        rpushHelper.on("input", () => {
+          rpoplpushNode.receive({
+            topic: "test:list:rpoplpushsrc",
+            payload: "test:list:rpoplpushdst",
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      rpushHelper.on("input", () => {
-        rpoplpushNode.receive({
+        rpushNode.receive({
           topic: "test:list:rpoplpushsrc",
-          payload: "test:list:rpoplpushdst",
+          payload: ["a", "b"],
         });
       });
+    }
+  );
 
-      rpushNode.receive({
-        topic: "test:list:rpoplpushsrc",
-        payload: ["a", "b"],
-      });
-    });
-  });
+  it(
+    "should BLMOVE atomically move element between lists when data is present",
+    { timeout: 8000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "lpush-node",
+          type: "redis-command",
+          server: "config1",
+          command: "LPUSH",
+          name: "LPUSH",
+          topic: "",
+          params: "[]",
+          wires: [["lpush-helper"]],
+        },
+        { id: "lpush-helper", type: "helper" },
+        {
+          id: "blmove-node",
+          type: "redis-command",
+          server: "config1",
+          command: "BLMOVE",
+          name: "BLMOVE",
+          block: true,
+          topic: "",
+          params: "[]",
+          wires: [["blmove-helper"]],
+        },
+        { id: "blmove-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-  it("should BLMOVE atomically move element between lists when data is present", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "lpush-node",
-        type: "redis-command",
-        server: "config1",
-        command: "LPUSH",
-        name: "LPUSH",
-        topic: "",
-        params: "[]",
-        wires: [["lpush-helper"]],
-      },
-      { id: "lpush-helper", type: "helper" },
-      {
-        id: "blmove-node",
-        type: "redis-command",
-        server: "config1",
-        command: "BLMOVE",
-        name: "BLMOVE",
-        block: true,
-        topic: "",
-        params: "[]",
-        wires: [["blmove-helper"]],
-      },
-      { id: "blmove-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+      helper.load(redisNode, flow, () => {
+        const lpushNode = helper.getNode("lpush-node");
+        const lpushHelper = helper.getNode("lpush-helper");
+        const blmoveNode = helper.getNode("blmove-node");
+        const blmoveHelper = helper.getNode("blmove-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-    helper.load(redisNode, flow, () => {
-      const lpushNode = helper.getNode("lpush-node");
-      const lpushHelper = helper.getNode("lpush-helper");
-      const blmoveNode = helper.getNode("blmove-node");
-      const blmoveHelper = helper.getNode("blmove-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+        delHelper.on("input", () => {
+          done();
+        });
 
-      delHelper.on("input", () => {
-        done();
-      });
+        blmoveHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("val");
+            delNode.receive({
+              payload: ["test:list:blmovesrc", "test:list:blmovedst"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      blmoveHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("val");
-          delNode.receive({
-            payload: ["test:list:blmovesrc", "test:list:blmovedst"],
+        lpushHelper.on("input", () => {
+          blmoveNode.receive({
+            payload: ["test:list:blmovesrc", "test:list:blmovedst", "LEFT", "RIGHT", "1"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      lpushHelper.on("input", () => {
-        blmoveNode.receive({
-          payload: ["test:list:blmovesrc", "test:list:blmovedst", "LEFT", "RIGHT", "1"],
         });
+
+        lpushNode.receive({ topic: "test:list:blmovesrc", payload: "val" });
       });
+    }
+  );
 
-      lpushNode.receive({ topic: "test:list:blmovesrc", payload: "val" });
-    });
-  });
-
-  it("should LMPOP pop the first element from a list", function (done) {
+  it("should LMPOP pop the first element from a list", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1225,7 +1236,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should BLMPOP return immediately when list has data", function (done) {
+  it("should BLMPOP return immediately when list has data", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1279,7 +1290,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should BLPOP return immediately when list has data", function (done) {
+  it("should BLPOP return immediately when list has data", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1332,7 +1343,7 @@ describe("List commands", function () {
     });
   });
 
-  it("should BRPOP return immediately when list has data", function (done) {
+  it("should BRPOP return immediately when list has data", { timeout: 8000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1387,237 +1398,265 @@ describe("List commands", function () {
 
   // LMOVEM/BLMOVEM (Redis 8.10) move up to (COUNT) or exactly (EXACTLY) N elements
   // atomically, returned as a flat array in the requested ordering (OBO/BULK).
-  it("LMOVEM moves multiple elements in order and drains an emptied source", async function () {
-    if (!(await isCommandSupported("LMOVEM"))) {
-      this.skip();
-    }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("rpush", "RPUSH"),
-      helperNode("rpush"),
-      commandNode("lmovem", "LMOVEM"),
-      helperNode("lmovem"),
-    ]);
+  it(
+    "LMOVEM moves multiple elements in order and drains an emptied source",
+    { timeout: 8000 },
+    async function (t) {
+      if (!(await isCommandSupported("LMOVEM"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("rpush", "RPUSH"),
+        helperNode("rpush"),
+        commandNode("lmovem", "LMOVEM"),
+        helperNode("lmovem"),
+      ]);
 
-    await invoke(helper, "rpush", { topic: "test:list:lmovem:src", payload: ["a", "b", "c"] });
+      await invoke(helper, "rpush", { topic: "test:list:lmovem:src", payload: ["a", "b", "c"] });
 
-    const moved = await invoke(helper, "lmovem", {
-      payload: [
-        "test:list:lmovem:src",
-        "test:list:lmovem:dst",
-        "LEFT",
-        "RIGHT",
-        "COUNT",
-        "3",
-        "BULK",
-      ],
-    });
-    moved.should.eql(["a", "b", "c"]);
-
-    const client = directRedis();
-    try {
-      (await client.exists("test:list:lmovem:src")).should.equal(0);
-      (await client.lrange("test:list:lmovem:dst", 0, -1)).should.eql(["a", "b", "c"]);
-    } finally {
-      await client.del("test:list:lmovem:dst");
-      client.disconnect();
-    }
-  });
-
-  it("LMOVEM distinguishes one-by-one from bulk ordering when moving on the same side", async function () {
-    if (!(await isCommandSupported("LMOVEM"))) {
-      this.skip();
-    }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("rpush", "RPUSH"),
-      helperNode("rpush"),
-      commandNode("lmovem", "LMOVEM"),
-      helperNode("lmovem"),
-    ]);
-
-    for (const mode of ["OBO", "BULK"]) {
-      await invoke(helper, "rpush", {
-        topic: `test:list:lmovem:${mode}:src`,
-        payload: ["a", "b", "c"],
-      });
-      await invoke(helper, "rpush", {
-        topic: `test:list:lmovem:${mode}:dst`,
-        payload: "x",
-      });
-    }
-
-    const oneByOne = await invoke(helper, "lmovem", {
-      payload: [
-        "test:list:lmovem:OBO:src",
-        "test:list:lmovem:OBO:dst",
-        "LEFT",
-        "LEFT",
-        "COUNT",
-        "3",
-        "OBO",
-      ],
-    });
-    const bulk = await invoke(helper, "lmovem", {
-      payload: [
-        "test:list:lmovem:BULK:src",
-        "test:list:lmovem:BULK:dst",
-        "LEFT",
-        "LEFT",
-        "COUNT",
-        "3",
-        "BULK",
-      ],
-    });
-
-    oneByOne.should.eql(["c", "b", "a"]);
-    bulk.should.eql(["a", "b", "c"]);
-
-    const client = directRedis();
-    try {
-      (await client.lrange("test:list:lmovem:OBO:dst", 0, -1)).should.eql(["c", "b", "a", "x"]);
-      (await client.lrange("test:list:lmovem:BULK:dst", 0, -1)).should.eql(["a", "b", "c", "x"]);
-    } finally {
-      client.disconnect();
-    }
-  });
-
-  it("LMOVEM EXACTLY returns nil and leaves the source untouched when not enough elements exist", async function () {
-    if (!(await isCommandSupported("LMOVEM"))) {
-      this.skip();
-    }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("rpush", "RPUSH"),
-      helperNode("rpush"),
-      commandNode("lmovem", "LMOVEM"),
-      helperNode("lmovem"),
-    ]);
-
-    await invoke(helper, "rpush", { topic: "test:list:lmovem:exact:src", payload: ["a", "b"] });
-
-    const result = await invoke(helper, "lmovem", {
-      payload: [
-        "test:list:lmovem:exact:src",
-        "test:list:lmovem:exact:dst",
-        "LEFT",
-        "RIGHT",
-        "EXACTLY",
-        "5",
-        "BULK",
-      ],
-    });
-    (result === null).should.be.true();
-
-    const client = directRedis();
-    try {
-      (await client.lrange("test:list:lmovem:exact:src", 0, -1)).should.eql(["a", "b"]);
-    } finally {
-      await client.del("test:list:lmovem:exact:src");
-      client.disconnect();
-    }
-  });
-
-  it("BLMOVEM moves multiple elements immediately when data is present", async function () {
-    if (!(await isCommandSupported("BLMOVEM"))) {
-      this.skip();
-    }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("rpush", "RPUSH"),
-      helperNode("rpush"),
-      commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
-      helperNode("blmovem"),
-    ]);
-
-    await invoke(helper, "rpush", { topic: "test:list:blmovem:src", payload: ["x", "y", "z"] });
-
-    const moved = await invoke(helper, "blmovem", {
-      payload: [
-        "test:list:blmovem:src",
-        "test:list:blmovem:dst",
-        "LEFT",
-        "RIGHT",
-        "1",
-        "COUNT",
-        "2",
-        "BULK",
-      ],
-    });
-    moved.should.eql(["x", "y"]);
-
-    const client = directRedis();
-    try {
-      (await client.lrange("test:list:blmovem:dst", 0, -1)).should.eql(["x", "y"]);
-    } finally {
-      await client.del("test:list:blmovem:src", "test:list:blmovem:dst");
-      client.disconnect();
-    }
-  });
-
-  it("BLMOVEM resolves nil after its timeout when no data ever arrives", async function () {
-    this.timeout(8000);
-    if (!(await isCommandSupported("BLMOVEM"))) {
-      this.skip();
-    }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
-      helperNode("blmovem"),
-    ]);
-
-    const result = await invoke(
-      helper,
-      "blmovem",
-      {
+      const moved = await invoke(helper, "lmovem", {
         payload: [
-          "test:list:blmovem:timeout:src",
-          "test:list:blmovem:timeout:dst",
+          "test:list:lmovem:src",
+          "test:list:lmovem:dst",
+          "LEFT",
+          "RIGHT",
+          "COUNT",
+          "3",
+          "BULK",
+        ],
+      });
+      moved.should.eql(["a", "b", "c"]);
+
+      const client = directRedis();
+      try {
+        (await client.exists("test:list:lmovem:src")).should.equal(0);
+        (await client.lrange("test:list:lmovem:dst", 0, -1)).should.eql(["a", "b", "c"]);
+      } finally {
+        await client.del("test:list:lmovem:dst");
+        client.disconnect();
+      }
+    }
+  );
+
+  it(
+    "LMOVEM distinguishes one-by-one from bulk ordering when moving on the same side",
+    { timeout: 8000 },
+    async function (t) {
+      if (!(await isCommandSupported("LMOVEM"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("rpush", "RPUSH"),
+        helperNode("rpush"),
+        commandNode("lmovem", "LMOVEM"),
+        helperNode("lmovem"),
+      ]);
+
+      for (const mode of ["OBO", "BULK"]) {
+        await invoke(helper, "rpush", {
+          topic: `test:list:lmovem:${mode}:src`,
+          payload: ["a", "b", "c"],
+        });
+        await invoke(helper, "rpush", {
+          topic: `test:list:lmovem:${mode}:dst`,
+          payload: "x",
+        });
+      }
+
+      const oneByOne = await invoke(helper, "lmovem", {
+        payload: [
+          "test:list:lmovem:OBO:src",
+          "test:list:lmovem:OBO:dst",
+          "LEFT",
+          "LEFT",
+          "COUNT",
+          "3",
+          "OBO",
+        ],
+      });
+      const bulk = await invoke(helper, "lmovem", {
+        payload: [
+          "test:list:lmovem:BULK:src",
+          "test:list:lmovem:BULK:dst",
+          "LEFT",
+          "LEFT",
+          "COUNT",
+          "3",
+          "BULK",
+        ],
+      });
+
+      oneByOne.should.eql(["c", "b", "a"]);
+      bulk.should.eql(["a", "b", "c"]);
+
+      const client = directRedis();
+      try {
+        (await client.lrange("test:list:lmovem:OBO:dst", 0, -1)).should.eql(["c", "b", "a", "x"]);
+        (await client.lrange("test:list:lmovem:BULK:dst", 0, -1)).should.eql(["a", "b", "c", "x"]);
+      } finally {
+        client.disconnect();
+      }
+    }
+  );
+
+  it(
+    "LMOVEM EXACTLY returns nil and leaves the source untouched when not enough elements exist",
+    { timeout: 8000 },
+    async function (t) {
+      if (!(await isCommandSupported("LMOVEM"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("rpush", "RPUSH"),
+        helperNode("rpush"),
+        commandNode("lmovem", "LMOVEM"),
+        helperNode("lmovem"),
+      ]);
+
+      await invoke(helper, "rpush", { topic: "test:list:lmovem:exact:src", payload: ["a", "b"] });
+
+      const result = await invoke(helper, "lmovem", {
+        payload: [
+          "test:list:lmovem:exact:src",
+          "test:list:lmovem:exact:dst",
+          "LEFT",
+          "RIGHT",
+          "EXACTLY",
+          "5",
+          "BULK",
+        ],
+      });
+      (result === null).should.be.true();
+
+      const client = directRedis();
+      try {
+        (await client.lrange("test:list:lmovem:exact:src", 0, -1)).should.eql(["a", "b"]);
+      } finally {
+        await client.del("test:list:lmovem:exact:src");
+        client.disconnect();
+      }
+    }
+  );
+
+  it(
+    "BLMOVEM moves multiple elements immediately when data is present",
+    { timeout: 8000 },
+    async function (t) {
+      if (!(await isCommandSupported("BLMOVEM"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("rpush", "RPUSH"),
+        helperNode("rpush"),
+        commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
+        helperNode("blmovem"),
+      ]);
+
+      await invoke(helper, "rpush", { topic: "test:list:blmovem:src", payload: ["x", "y", "z"] });
+
+      const moved = await invoke(helper, "blmovem", {
+        payload: [
+          "test:list:blmovem:src",
+          "test:list:blmovem:dst",
           "LEFT",
           "RIGHT",
           "1",
           "COUNT",
+          "2",
+          "BULK",
+        ],
+      });
+      moved.should.eql(["x", "y"]);
+
+      const client = directRedis();
+      try {
+        (await client.lrange("test:list:blmovem:dst", 0, -1)).should.eql(["x", "y"]);
+      } finally {
+        await client.del("test:list:blmovem:src", "test:list:blmovem:dst");
+        client.disconnect();
+      }
+    }
+  );
+
+  it(
+    "BLMOVEM resolves nil after its timeout when no data ever arrives",
+    { timeout: 8000 },
+    async function (t) {
+      if (!(await isCommandSupported("BLMOVEM"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
+        helperNode("blmovem"),
+      ]);
+
+      const result = await invoke(
+        helper,
+        "blmovem",
+        {
+          payload: [
+            "test:list:blmovem:timeout:src",
+            "test:list:blmovem:timeout:dst",
+            "LEFT",
+            "RIGHT",
+            "1",
+            "COUNT",
+            "1",
+            "BULK",
+          ],
+        },
+        5000
+      );
+      (result === null).should.be.true();
+    }
+  );
+
+  it(
+    "BLMOVEM (Block Commands) closes cleanly while still blocked on an empty source",
+    { timeout: 10000 },
+    async function (t) {
+      if (!(await isCommandSupported("BLMOVEM"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
+        helperNode("blmovem"),
+      ]);
+
+      helper.getNode("blmovem-node").receive({
+        payload: [
+          "test:list:blmovem:shutdown:src",
+          "test:list:blmovem:shutdown:dst",
+          "LEFT",
+          "RIGHT",
+          "0",
+          "COUNT",
           "1",
           "BULK",
         ],
-      },
-      5000
-    );
-    (result === null).should.be.true();
-  });
+      });
 
-  it("BLMOVEM (Block Commands) closes cleanly while still blocked on an empty source", async function () {
-    this.timeout(10000);
-    if (!(await isCommandSupported("BLMOVEM"))) {
-      this.skip();
+      const client = directRedis();
+      try {
+        await waitForBlockedCommand(client, "blmovem");
+      } finally {
+        client.disconnect();
+      }
+      const started = Date.now();
+      await helper.unload();
+      (Date.now() - started).should.be.below(1000);
     }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("blmovem", "BLMOVEM", "config1", { block: true }),
-      helperNode("blmovem"),
-    ]);
-
-    helper.getNode("blmovem-node").receive({
-      payload: [
-        "test:list:blmovem:shutdown:src",
-        "test:list:blmovem:shutdown:dst",
-        "LEFT",
-        "RIGHT",
-        "0",
-        "COUNT",
-        "1",
-        "BULK",
-      ],
-    });
-
-    const client = directRedis();
-    try {
-      await waitForBlockedCommand(client, "blmovem");
-    } finally {
-      client.disconnect();
-    }
-    const started = Date.now();
-    await helper.unload();
-    (Date.now() - started).should.be.below(1000);
-  });
+  );
 });

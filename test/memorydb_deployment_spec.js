@@ -1,6 +1,7 @@
 "use strict";
 
 const helper = require("node-red-node-test-helper");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const Redis = require("ioredis");
 const redisNode = require("../redis.js");
 const { commandNode, expectError, helperNode, invoke, load } = require("./helpers/topology");
@@ -134,14 +135,12 @@ async function runDirectMemoryDbTransaction() {
   }
 }
 
-describeMemoryDb("AWS MemoryDB deployment", function () {
-  this.timeout(45000);
-
-  beforeEach(function (done) {
+describeMemoryDb("AWS MemoryDB deployment", () => {
+  beforeEach(function (t, done) {
     helper.startServer(done);
   });
 
-  afterEach(function (done) {
+  afterEach(function (t, done) {
     helper
       .unload()
       .then(cleanupMemoryDbKeys)
@@ -149,7 +148,7 @@ describeMemoryDb("AWS MemoryDB deployment", function () {
       .catch(done);
   });
 
-  it("runs authenticated cluster command smoke coverage", async function () {
+  it("runs authenticated cluster command smoke coverage", { timeout: 45000 }, async function () {
     await load(
       helper,
       redisNode,
@@ -203,7 +202,7 @@ describeMemoryDb("AWS MemoryDB deployment", function () {
     ).should.be.a.Number();
   });
 
-  it("runs read-only EVAL and (when supported) FCALL", async function () {
+  it("runs read-only EVAL and (when supported) FCALL", { timeout: 45000 }, async function () {
     const supportsFunctions = await memoryDbSupportsFunctions();
 
     const flow = [
@@ -261,111 +260,119 @@ describeMemoryDb("AWS MemoryDB deployment", function () {
     }
   });
 
-  it("runs block-mode (dedicated connection) Script and (when supported) Function", async function () {
-    // Execution-level coverage only: the server-side dedicated-connection proof
-    // (CLIENT LIST counting by connectionName) lives in scripting_commands_spec
-    // and the sentinel spec — the cluster-style config path cannot carry an
-    // ioredis connectionName, and counting clients on shared AWS infrastructure
-    // would be unreliable anyway.
-    const supportsFunctions = await memoryDbSupportsFunctions();
-    const flow = [
-      memoryDbConfigNode(),
-      {
-        id: "blk-script-node",
-        type: "redis-lua-script",
-        server: "config1",
-        name: "memorydb-block-script",
-        mode: "script",
-        readonly: false,
-        stored: false,
-        keyval: 1,
-        func: "redis.call('SET', KEYS[1], ARGV[1]); return redis.call('GET', KEYS[1])",
-        block: true,
-        wires: [["blk-script-helper"]],
-      },
-      helperNode("blk-script"),
-    ];
-    if (supportsFunctions) {
-      flow.push({
-        id: "blk-fn-node",
-        type: "redis-lua-script",
-        server: "config1",
-        name: "memorydb-block-fn",
-        mode: "function",
-        readonly: false,
-        keyval: 1,
-        func: "#!lua name=blockmemorydblib\nredis.register_function('blockmemorydbfn', function(keys, args) redis.call('SET', keys[1], args[1]); return redis.call('GET', keys[1]) end)",
-        fname: "blockmemorydbfn",
-        block: true,
-        wires: [["blk-fn-helper"]],
-      });
-      flow.push(helperNode("blk-fn"));
-    }
+  it(
+    "runs block-mode (dedicated connection) Script and (when supported) Function",
+    { timeout: 45000 },
+    async function () {
+      // Execution-level coverage only: the server-side dedicated-connection proof
+      // (CLIENT LIST counting by connectionName) lives in scripting_commands_spec
+      // and the sentinel spec — the cluster-style config path cannot carry an
+      // ioredis connectionName, and counting clients on shared AWS infrastructure
+      // would be unreliable anyway.
+      const supportsFunctions = await memoryDbSupportsFunctions();
+      const flow = [
+        memoryDbConfigNode(),
+        {
+          id: "blk-script-node",
+          type: "redis-lua-script",
+          server: "config1",
+          name: "memorydb-block-script",
+          mode: "script",
+          readonly: false,
+          stored: false,
+          keyval: 1,
+          func: "redis.call('SET', KEYS[1], ARGV[1]); return redis.call('GET', KEYS[1])",
+          block: true,
+          wires: [["blk-script-helper"]],
+        },
+        helperNode("blk-script"),
+      ];
+      if (supportsFunctions) {
+        flow.push({
+          id: "blk-fn-node",
+          type: "redis-lua-script",
+          server: "config1",
+          name: "memorydb-block-fn",
+          mode: "function",
+          readonly: false,
+          keyval: 1,
+          func: "#!lua name=blockmemorydblib\nredis.register_function('blockmemorydbfn', function(keys, args) redis.call('SET', keys[1], args[1]); return redis.call('GET', keys[1]) end)",
+          fname: "blockmemorydbfn",
+          block: true,
+          wires: [["blk-fn-helper"]],
+        });
+        flow.push(helperNode("blk-fn"));
+      }
 
-    await load(helper, redisNode, flow);
+      await load(helper, redisNode, flow);
 
-    (
-      await invoke(helper, "blk-script", { payload: ["test:memorydb:{lua}:blk", "s-value"] })
-    ).should.equal("s-value");
-
-    if (supportsFunctions) {
-      const fnNode = helper.getNode("blk-fn-node");
-      await waitForNodeProp(fnNode, "libname");
       (
-        await invoke(helper, "blk-fn", { payload: ["test:memorydb:{lua}:blkfn", "f-value"] })
-      ).should.equal("f-value");
-    }
-  });
+        await invoke(helper, "blk-script", { payload: ["test:memorydb:{lua}:blk", "s-value"] })
+      ).should.equal("s-value");
 
-  it("authenticates with env-var optionsType (cluster options JSON read from an env var)", async function () {
-    const ENV_NAME = "AWS_MEMORYDB_OPTIONS_JSON";
-    const original = process.env[ENV_NAME];
-    process.env[ENV_NAME] = JSON.stringify(memoryDbNodeOptions());
-    try {
-      await load(helper, redisNode, [
-        memoryDbEnvConfigNode(ENV_NAME),
-        commandNode("ping-env", "PING"),
-        helperNode("ping-env"),
-        commandNode("acl-env", "ACL"),
-        helperNode("acl-env"),
-        commandNode("set-env", "SET"),
-        helperNode("set-env"),
-        commandNode("get-env", "GET"),
-        helperNode("get-env"),
-        commandNode("del-env", "DEL"),
-        helperNode("del-env"),
-      ]);
-
-      (await invoke(helper, "ping-env")).should.equal("PONG");
-      (await invoke(helper, "acl-env", { payload: ["WHOAMI"] })).should.equal(
-        process.env.MEMORYDB_USERNAME
-      );
-      (
-        await invoke(helper, "set-env", {
-          topic: "test:memorydb:{basic}:one",
-          payload: "env-value",
-        })
-      ).should.equal("OK");
-      (
-        await invoke(helper, "get-env", {
-          topic: "test:memorydb:{basic}:one",
-        })
-      ).should.equal("env-value");
-      (
-        await invoke(helper, "del-env", {
-          payload: ["test:memorydb:{basic}:one"],
-        })
-      ).should.be.a.Number();
-    } finally {
-      if (original === undefined) {
-        delete process.env[ENV_NAME];
-      } else {
-        process.env[ENV_NAME] = original;
+      if (supportsFunctions) {
+        const fnNode = helper.getNode("blk-fn-node");
+        await waitForNodeProp(fnNode, "libname");
+        (
+          await invoke(helper, "blk-fn", { payload: ["test:memorydb:{lua}:blkfn", "f-value"] })
+        ).should.equal("f-value");
       }
     }
-  });
+  );
 
-  it("runs same-slot cluster Lua through redis-lua-script", async function () {
+  it(
+    "authenticates with env-var optionsType (cluster options JSON read from an env var)",
+    { timeout: 45000 },
+    async function () {
+      const ENV_NAME = "AWS_MEMORYDB_OPTIONS_JSON";
+      const original = process.env[ENV_NAME];
+      process.env[ENV_NAME] = JSON.stringify(memoryDbNodeOptions());
+      try {
+        await load(helper, redisNode, [
+          memoryDbEnvConfigNode(ENV_NAME),
+          commandNode("ping-env", "PING"),
+          helperNode("ping-env"),
+          commandNode("acl-env", "ACL"),
+          helperNode("acl-env"),
+          commandNode("set-env", "SET"),
+          helperNode("set-env"),
+          commandNode("get-env", "GET"),
+          helperNode("get-env"),
+          commandNode("del-env", "DEL"),
+          helperNode("del-env"),
+        ]);
+
+        (await invoke(helper, "ping-env")).should.equal("PONG");
+        (await invoke(helper, "acl-env", { payload: ["WHOAMI"] })).should.equal(
+          process.env.MEMORYDB_USERNAME
+        );
+        (
+          await invoke(helper, "set-env", {
+            topic: "test:memorydb:{basic}:one",
+            payload: "env-value",
+          })
+        ).should.equal("OK");
+        (
+          await invoke(helper, "get-env", {
+            topic: "test:memorydb:{basic}:one",
+          })
+        ).should.equal("env-value");
+        (
+          await invoke(helper, "del-env", {
+            payload: ["test:memorydb:{basic}:one"],
+          })
+        ).should.be.a.Number();
+      } finally {
+        if (original === undefined) {
+          delete process.env[ENV_NAME];
+        } else {
+          process.env[ENV_NAME] = original;
+        }
+      }
+    }
+  );
+
+  it("runs same-slot cluster Lua through redis-lua-script", { timeout: 45000 }, async function () {
     const flow = [
       memoryDbConfigNode(),
       {
@@ -390,29 +397,37 @@ describeMemoryDb("AWS MemoryDB deployment", function () {
     ).should.equal(3);
   });
 
-  it("runs Redis 7.2 cluster-prone commands with same-slot keys", async function () {
-    const script =
-      "redis.call('SET', KEYS[1], ARGV[1]); redis.call('SET', KEYS[2], ARGV[1]); return {redis.call('GET', KEYS[1]), redis.call('GET', KEYS[2])}";
-    const scriptSha = await loadScriptOnMemoryDb(script);
-    await load(helper, redisNode, clusterProneFlow(memoryDbConfigNode()));
+  it(
+    "runs Redis 7.2 cluster-prone commands with same-slot keys",
+    { timeout: 45000 },
+    async function () {
+      const script =
+        "redis.call('SET', KEYS[1], ARGV[1]); redis.call('SET', KEYS[2], ARGV[1]); return {redis.call('GET', KEYS[1]), redis.call('GET', KEYS[2])}";
+      const scriptSha = await loadScriptOnMemoryDb(script);
+      await load(helper, redisNode, clusterProneFlow(memoryDbConfigNode()));
 
-    await runClusterProneSuccessCases(helper, {
-      prefix: "test:memorydb",
-      scriptSha,
-      nodeTransaction: false,
-      selectSupported: false,
-    });
-    await runDirectMemoryDbTransaction();
-  });
+      await runClusterProneSuccessCases(helper, {
+        prefix: "test:memorydb",
+        scriptSha,
+        nodeTransaction: false,
+        selectSupported: false,
+      });
+      await runDirectMemoryDbTransaction();
+    }
+  );
 
-  it("rejects Redis 7.2 cluster-prone commands with cross-slot keys", async function () {
-    const script = "return {KEYS[1], KEYS[2]}";
-    const scriptSha = await loadScriptOnMemoryDb(script);
-    await load(helper, redisNode, clusterProneFlow(memoryDbConfigNode()));
+  it(
+    "rejects Redis 7.2 cluster-prone commands with cross-slot keys",
+    { timeout: 45000 },
+    async function () {
+      const script = "return {KEYS[1], KEYS[2]}";
+      const scriptSha = await loadScriptOnMemoryDb(script);
+      await load(helper, redisNode, clusterProneFlow(memoryDbConfigNode()));
 
-    await runClusterProneCrossSlotFailures(helper, {
-      prefix: "test:memorydb",
-      scriptSha,
-    });
-  });
+      await runClusterProneCrossSlotFailures(helper, {
+        prefix: "test:memorydb",
+        scriptSha,
+      });
+    }
+  );
 });

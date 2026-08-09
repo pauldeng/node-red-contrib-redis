@@ -1,4 +1,5 @@
 "use strict";
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
@@ -56,73 +57,79 @@ function makeOutFlow(command, topic, obj) {
   ];
 }
 
-describe("redis-out node", function () {
-  this.timeout(8000);
-
-  beforeEach(function (done) {
+describe("redis-out node", () => {
+  beforeEach(function (t, done) {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => helper.stopServer(() => cleanupKeys("test:out:*", done)));
   });
 
   // ── rpush ──────────────────────────────────────────────────────────────
 
-  it("rpush — appends string payload to the right of the list", function (done) {
-    helper.load(redisNode, makeOutFlow("rpush", "test:out:rpush", false), function () {
-      const out = helper.getNode("out");
-      const c = direct();
+  it(
+    "rpush — appends string payload to the right of the list",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("rpush", "test:out:rpush", false), function () {
+        const out = helper.getNode("out");
+        const c = direct();
 
-      out.receive({ payload: "item1" });
+        out.receive({ payload: "item1" });
 
-      setTimeout(() => {
-        c.lrange("test:out:rpush", 0, -1)
-          .then((items) => {
-            c.disconnect();
-            try {
-              items.should.eql(["item1"]);
-              done();
-            } catch (e) {
+        setTimeout(() => {
+          c.lrange("test:out:rpush", 0, -1)
+            .then((items) => {
+              c.disconnect();
+              try {
+                items.should.eql(["item1"]);
+                done();
+              } catch (e) {
+                done(e);
+              }
+            })
+            .catch((e) => {
+              c.disconnect();
               done(e);
-            }
-          })
-          .catch((e) => {
-            c.disconnect();
-            done(e);
-          });
-      }, 200);
-    });
-  });
+            });
+        }, 200);
+      });
+    }
+  );
 
-  it("rpush — serializes object to JSON string when obj is true", function (done) {
-    helper.load(redisNode, makeOutFlow("rpush", "test:out:rpush:json", true), function () {
-      const out = helper.getNode("out");
-      const c = direct();
+  it(
+    "rpush — serializes object to JSON string when obj is true",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("rpush", "test:out:rpush:json", true), function () {
+        const out = helper.getNode("out");
+        const c = direct();
 
-      out.receive({ payload: { a: 1 } });
+        out.receive({ payload: { a: 1 } });
 
-      setTimeout(() => {
-        c.lrange("test:out:rpush:json", 0, -1)
-          .then((items) => {
-            c.disconnect();
-            try {
-              items.length.should.equal(1);
-              JSON.parse(items[0]).should.deepEqual({ a: 1 });
-              done();
-            } catch (e) {
+        setTimeout(() => {
+          c.lrange("test:out:rpush:json", 0, -1)
+            .then((items) => {
+              c.disconnect();
+              try {
+                items.length.should.equal(1);
+                JSON.parse(items[0]).should.deepEqual({ a: 1 });
+                done();
+              } catch (e) {
+                done(e);
+              }
+            })
+            .catch((e) => {
+              c.disconnect();
               done(e);
-            }
-          })
-          .catch((e) => {
-            c.disconnect();
-            done(e);
-          });
-      }, 200);
-    });
-  });
+            });
+        }, 200);
+      });
+    }
+  );
 
-  it("rpush — msg.topic overrides the node topic", function (done) {
+  it("rpush — msg.topic overrides the node topic", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("rpush", "test:out:rpush:default", false), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -152,66 +159,74 @@ describe("redis-out node", function () {
     });
   });
 
-  it("rpush — appends multiple sequential messages in order", function (done) {
-    helper.load(redisNode, makeOutFlow("rpush", "test:out:rpush:seq", false), function () {
-      const out = helper.getNode("out");
-      const c = direct();
+  it(
+    "rpush — appends multiple sequential messages in order",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("rpush", "test:out:rpush:seq", false), function () {
+        const out = helper.getNode("out");
+        const c = direct();
 
-      out.receive({ payload: "first" });
-      out.receive({ payload: "second" });
-      out.receive({ payload: "third" });
+        out.receive({ payload: "first" });
+        out.receive({ payload: "second" });
+        out.receive({ payload: "third" });
 
-      setTimeout(() => {
-        c.lrange("test:out:rpush:seq", 0, -1)
-          .then((items) => {
-            c.disconnect();
-            try {
-              items.should.eql(["first", "second", "third"]);
-              done();
-            } catch (e) {
+        setTimeout(() => {
+          c.lrange("test:out:rpush:seq", 0, -1)
+            .then((items) => {
+              c.disconnect();
+              try {
+                items.should.eql(["first", "second", "third"]);
+                done();
+              } catch (e) {
+                done(e);
+              }
+            })
+            .catch((e) => {
+              c.disconnect();
               done(e);
-            }
-          })
-          .catch((e) => {
-            c.disconnect();
-            done(e);
-          });
-      }, 300);
-    });
-  });
+            });
+        }, 300);
+      });
+    }
+  );
 
   // ── lpush ──────────────────────────────────────────────────────────────
 
-  it("lpush — prepends string payload to the left of the list", function (done) {
-    helper.load(redisNode, makeOutFlow("lpush", "test:out:lpush", false), function () {
-      const out = helper.getNode("out");
-      const c = direct();
+  it(
+    "lpush — prepends string payload to the left of the list",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("lpush", "test:out:lpush", false), function () {
+        const out = helper.getNode("out");
+        const c = direct();
 
-      out.receive({ payload: "first" });
-      setTimeout(() => out.receive({ payload: "second" }), 50);
+        out.receive({ payload: "first" });
+        setTimeout(() => out.receive({ payload: "second" }), 50);
 
-      setTimeout(() => {
-        c.lrange("test:out:lpush", 0, -1)
-          .then((items) => {
-            c.disconnect();
-            try {
-              // lpush prepends; second push goes to head
-              items[0].should.equal("second");
-              items[1].should.equal("first");
-              done();
-            } catch (e) {
+        setTimeout(() => {
+          c.lrange("test:out:lpush", 0, -1)
+            .then((items) => {
+              c.disconnect();
+              try {
+                // lpush prepends; second push goes to head
+                items[0].should.equal("second");
+                items[1].should.equal("first");
+                done();
+              } catch (e) {
+                done(e);
+              }
+            })
+            .catch((e) => {
+              c.disconnect();
               done(e);
-            }
-          })
-          .catch((e) => {
-            c.disconnect();
-            done(e);
-          });
-      }, 300);
-    });
-  });
+            });
+        }, 300);
+      });
+    }
+  );
 
-  it("lpush — serializes object to JSON when obj is true", function (done) {
+  it("lpush — serializes object to JSON when obj is true", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("lpush", "test:out:lpush:json", true), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -239,7 +254,7 @@ describe("redis-out node", function () {
 
   // ── rpushx ─────────────────────────────────────────────────────────────
 
-  it("rpushx — appends to existing list", function (done) {
+  it("rpushx — appends to existing list", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("rpushx", "test:out:rpushx:exists", false), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -266,7 +281,7 @@ describe("redis-out node", function () {
     });
   });
 
-  it("rpushx — does not create key when it does not exist", function (done) {
+  it("rpushx — does not create key when it does not exist", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("rpushx", "test:out:rpushx:none", false), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -294,7 +309,7 @@ describe("redis-out node", function () {
 
   // ── lpushx ─────────────────────────────────────────────────────────────
 
-  it("lpushx — prepends to existing list", function (done) {
+  it("lpushx — prepends to existing list", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("lpushx", "test:out:lpushx:exists", false), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -322,7 +337,7 @@ describe("redis-out node", function () {
     });
   });
 
-  it("lpushx — does not create key when it does not exist", function (done) {
+  it("lpushx — does not create key when it does not exist", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("lpushx", "test:out:lpushx:none", false), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -350,7 +365,7 @@ describe("redis-out node", function () {
 
   // ── publish ────────────────────────────────────────────────────────────
 
-  it("publish — delivers plain string to subscriber", function (done) {
+  it("publish — delivers plain string to subscriber", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("publish", "test:out:publish:ch", false), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -375,7 +390,7 @@ describe("redis-out node", function () {
     });
   });
 
-  it("publish — serializes object to JSON when obj is true", function (done) {
+  it("publish — serializes object to JSON when obj is true", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("publish", "test:out:publish:json", true), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -399,7 +414,7 @@ describe("redis-out node", function () {
     });
   });
 
-  it("publish — msg.topic overrides the node topic", function (done) {
+  it("publish — msg.topic overrides the node topic", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("publish", "test:out:publish:default", false), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -426,38 +441,42 @@ describe("redis-out node", function () {
 
   // ── xadd ───────────────────────────────────────────────────────────────
 
-  it("xadd — appends object payload as stream field-value pairs", function (done) {
-    helper.load(redisNode, makeOutFlow("xadd", "test:out:xadd:obj", true), function () {
-      const out = helper.getNode("out");
-      const c = direct();
+  it(
+    "xadd — appends object payload as stream field-value pairs",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("xadd", "test:out:xadd:obj", true), function () {
+        const out = helper.getNode("out");
+        const c = direct();
 
-      out.receive({ payload: { temperature: "22", unit: "C" } });
+        out.receive({ payload: { temperature: "22", unit: "C" } });
 
-      setTimeout(() => {
-        c.xrange("test:out:xadd:obj", "-", "+")
-          .then((entries) => {
-            c.disconnect();
-            try {
-              entries.length.should.equal(1);
-              const fields = entries[0][1]; // flat [field, val, ...]
-              const ti = fields.indexOf("temperature");
-              fields[ti + 1].should.equal("22");
-              const ui = fields.indexOf("unit");
-              fields[ui + 1].should.equal("C");
-              done();
-            } catch (e) {
+        setTimeout(() => {
+          c.xrange("test:out:xadd:obj", "-", "+")
+            .then((entries) => {
+              c.disconnect();
+              try {
+                entries.length.should.equal(1);
+                const fields = entries[0][1]; // flat [field, val, ...]
+                const ti = fields.indexOf("temperature");
+                fields[ti + 1].should.equal("22");
+                const ui = fields.indexOf("unit");
+                fields[ui + 1].should.equal("C");
+                done();
+              } catch (e) {
+                done(e);
+              }
+            })
+            .catch((e) => {
+              c.disconnect();
               done(e);
-            }
-          })
-          .catch((e) => {
-            c.disconnect();
-            done(e);
-          });
-      }, 300);
-    });
-  });
+            });
+        }, 300);
+      });
+    }
+  );
 
-  it("xadd — wraps primitive payload in a 'value' field", function (done) {
+  it("xadd — wraps primitive payload in a 'value' field", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("xadd", "test:out:xadd:str", false), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -486,7 +505,7 @@ describe("redis-out node", function () {
     });
   });
 
-  it("xadd — uses flat array payload as field-value args", function (done) {
+  it("xadd — uses flat array payload as field-value args", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("xadd", "test:out:xadd:arr", false), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -517,118 +536,137 @@ describe("redis-out node", function () {
     });
   });
 
-  it("xadd — multiple messages each become separate stream entries", function (done) {
-    helper.load(redisNode, makeOutFlow("xadd", "test:out:xadd:multi", true), function () {
-      const out = helper.getNode("out");
-      const c = direct();
+  it(
+    "xadd — multiple messages each become separate stream entries",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("xadd", "test:out:xadd:multi", true), function () {
+        const out = helper.getNode("out");
+        const c = direct();
 
-      out.receive({ payload: { seq: "1" } });
-      out.receive({ payload: { seq: "2" } });
-      out.receive({ payload: { seq: "3" } });
+        out.receive({ payload: { seq: "1" } });
+        out.receive({ payload: { seq: "2" } });
+        out.receive({ payload: { seq: "3" } });
 
-      setTimeout(() => {
-        c.xlen("test:out:xadd:multi")
-          .then((len) => {
-            c.disconnect();
-            try {
-              len.should.equal(3);
-              done();
-            } catch (e) {
+        setTimeout(() => {
+          c.xlen("test:out:xadd:multi")
+            .then((len) => {
+              c.disconnect();
+              try {
+                len.should.equal(3);
+                done();
+              } catch (e) {
+                done(e);
+              }
+            })
+            .catch((e) => {
+              c.disconnect();
               done(e);
-            }
-          })
-          .catch((e) => {
-            c.disconnect();
-            done(e);
-          });
-      }, 300);
-    });
-  });
+            });
+        }, 300);
+      });
+    }
+  );
 
   // ── zadd ───────────────────────────────────────────────────────────────
 
-  it("zadd — adds member with score from {score, member} object", function (done) {
-    helper.load(redisNode, makeOutFlow("zadd", "test:out:zadd:obj", false), function () {
-      const out = helper.getNode("out");
-      const c = direct();
+  it(
+    "zadd — adds member with score from {score, member} object",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("zadd", "test:out:zadd:obj", false), function () {
+        const out = helper.getNode("out");
+        const c = direct();
 
-      out.receive({ payload: { score: 42, member: "job-a" } });
+        out.receive({ payload: { score: 42, member: "job-a" } });
 
-      setTimeout(() => {
-        c.zscore("test:out:zadd:obj", "job-a")
-          .then((score) => {
-            c.disconnect();
-            try {
-              parseFloat(score).should.equal(42);
-              done();
-            } catch (e) {
+        setTimeout(() => {
+          c.zscore("test:out:zadd:obj", "job-a")
+            .then((score) => {
+              c.disconnect();
+              try {
+                parseFloat(score).should.equal(42);
+                done();
+              } catch (e) {
+                done(e);
+              }
+            })
+            .catch((e) => {
+              c.disconnect();
               done(e);
-            }
-          })
-          .catch((e) => {
-            c.disconnect();
-            done(e);
-          });
-      }, 200);
-    });
-  });
+            });
+        }, 200);
+      });
+    }
+  );
 
-  it("zadd — adds multiple members from flat [score, member, ...] array", function (done) {
-    helper.load(redisNode, makeOutFlow("zadd", "test:out:zadd:arr", false), function () {
-      const out = helper.getNode("out");
-      const c = direct();
+  it(
+    "zadd — adds multiple members from flat [score, member, ...] array",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("zadd", "test:out:zadd:arr", false), function () {
+        const out = helper.getNode("out");
+        const c = direct();
 
-      out.receive({ payload: [10, "alpha", 20, "beta"] });
+        out.receive({ payload: [10, "alpha", 20, "beta"] });
 
-      setTimeout(() => {
-        Promise.all([c.zscore("test:out:zadd:arr", "alpha"), c.zscore("test:out:zadd:arr", "beta")])
-          .then(([s1, s2]) => {
-            c.disconnect();
-            try {
-              parseFloat(s1).should.equal(10);
-              parseFloat(s2).should.equal(20);
-              done();
-            } catch (e) {
+        setTimeout(() => {
+          Promise.all([
+            c.zscore("test:out:zadd:arr", "alpha"),
+            c.zscore("test:out:zadd:arr", "beta"),
+          ])
+            .then(([s1, s2]) => {
+              c.disconnect();
+              try {
+                parseFloat(s1).should.equal(10);
+                parseFloat(s2).should.equal(20);
+                done();
+              } catch (e) {
+                done(e);
+              }
+            })
+            .catch((e) => {
+              c.disconnect();
               done(e);
-            }
-          })
-          .catch((e) => {
-            c.disconnect();
-            done(e);
-          });
-      }, 200);
-    });
-  });
+            });
+        }, 200);
+      });
+    }
+  );
 
-  it("zadd — serializes object member to JSON string when obj is true", function (done) {
-    helper.load(redisNode, makeOutFlow("zadd", "test:out:zadd:json", true), function () {
-      const out = helper.getNode("out");
-      const c = direct();
-      const member = { id: 99, name: "task" };
+  it(
+    "zadd — serializes object member to JSON string when obj is true",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("zadd", "test:out:zadd:json", true), function () {
+        const out = helper.getNode("out");
+        const c = direct();
+        const member = { id: 99, name: "task" };
 
-      out.receive({ payload: { score: 5, member } });
+        out.receive({ payload: { score: 5, member } });
 
-      setTimeout(() => {
-        c.zrange("test:out:zadd:json", 0, -1)
-          .then((members) => {
-            c.disconnect();
-            try {
-              members.length.should.equal(1);
-              JSON.parse(members[0]).should.deepEqual(member);
-              done();
-            } catch (e) {
+        setTimeout(() => {
+          c.zrange("test:out:zadd:json", 0, -1)
+            .then((members) => {
+              c.disconnect();
+              try {
+                members.length.should.equal(1);
+                JSON.parse(members[0]).should.deepEqual(member);
+                done();
+              } catch (e) {
+                done(e);
+              }
+            })
+            .catch((e) => {
+              c.disconnect();
               done(e);
-            }
-          })
-          .catch((e) => {
-            c.disconnect();
-            done(e);
-          });
-      }, 200);
-    });
-  });
+            });
+        }, 200);
+      });
+    }
+  );
 
-  it("zadd — updates score when same member is added twice", function (done) {
+  it("zadd — updates score when same member is added twice", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeOutFlow("zadd", "test:out:zadd:update", false), function () {
       const out = helper.getNode("out");
       const c = direct();
@@ -657,39 +695,47 @@ describe("redis-out node", function () {
 
   // ── error handling ─────────────────────────────────────────────────────
 
-  it("calls node.error when both msg.topic and node topic are empty", function (done) {
-    helper.load(redisNode, makeOutFlow("rpush", "", false), function () {
-      const out = helper.getNode("out");
+  it(
+    "calls node.error when both msg.topic and node topic are empty",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("rpush", "", false), function () {
+        const out = helper.getNode("out");
 
-      out.receive({ topic: "", payload: "should-fail" });
+        out.receive({ topic: "", payload: "should-fail" });
 
-      setTimeout(() => {
-        try {
-          out.error.callCount.should.be.above(0);
-          done();
-        } catch (e) {
-          done(e);
-        }
-      }, 200);
-    });
-  });
+        setTimeout(() => {
+          try {
+            out.error.callCount.should.be.above(0);
+            done();
+          } catch (e) {
+            done(e);
+          }
+        }, 200);
+      });
+    }
+  );
 
-  it("zadd — calls node.error when payload is a plain string", function (done) {
-    helper.load(redisNode, makeOutFlow("zadd", "test:out:zadd:err", false), function () {
-      const out = helper.getNode("out");
+  it(
+    "zadd — calls node.error when payload is a plain string",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeOutFlow("zadd", "test:out:zadd:err", false), function () {
+        const out = helper.getNode("out");
 
-      out.receive({ payload: "invalid-payload" });
+        out.receive({ payload: "invalid-payload" });
 
-      setTimeout(() => {
-        try {
-          out.error.callCount.should.be.above(0);
-          done();
-        } catch (e) {
-          done(e);
-        }
-      }, 200);
-    });
-  });
+        setTimeout(() => {
+          try {
+            out.error.callCount.should.be.above(0);
+            done();
+          } catch (e) {
+            done(e);
+          }
+        }, 200);
+      });
+    }
+  );
 
   // ── connection isolation ───────────────────────────────────────────────
   // Historical bug (fixed): redis-out pooled its client keyed by the config node's
@@ -698,89 +744,97 @@ describe("redis-out node", function () {
   // redis-out node pointed at one DB could end up writing to another. The invariant this
   // test protects: the pool is keyed by the config-node id (`n.server`), which is unique
   // and immutable regardless of display name.
-  it("routes a redis-out node to its own config's DB even when both configs share the default name 'Local'", async function () {
-    const key = "test:out:conntest:samename";
-    const flow = [
-      redisConfigNode("cfg-out-samename-db0", "Local", { db: 0 }),
-      redisConfigNode("cfg-out-samename-db1", "Local", { db: 1 }),
-      {
-        id: "out-samename-db0",
-        type: "redis-out",
-        server: "cfg-out-samename-db0",
-        command: "rpush",
-        topic: key,
-        obj: false,
-        wires: [],
-      },
-      {
-        id: "out-samename-db1",
-        type: "redis-out",
-        server: "cfg-out-samename-db1",
-        command: "rpush",
-        topic: key,
-        obj: false,
-        wires: [],
-      },
-    ];
+  it(
+    "routes a redis-out node to its own config's DB even when both configs share the default name 'Local'",
+    { timeout: 8000 },
+    async function () {
+      const key = "test:out:conntest:samename";
+      const flow = [
+        redisConfigNode("cfg-out-samename-db0", "Local", { db: 0 }),
+        redisConfigNode("cfg-out-samename-db1", "Local", { db: 1 }),
+        {
+          id: "out-samename-db0",
+          type: "redis-out",
+          server: "cfg-out-samename-db0",
+          command: "rpush",
+          topic: key,
+          obj: false,
+          wires: [],
+        },
+        {
+          id: "out-samename-db1",
+          type: "redis-out",
+          server: "cfg-out-samename-db1",
+          command: "rpush",
+          topic: key,
+          obj: false,
+          wires: [],
+        },
+      ];
 
-    await helper.load(redisNode, flow);
-    const outDb1 = helper.getNode("out-samename-db1");
-    const probe0 = directRedis({ db: 0 });
-    const probe1 = directRedis({ db: 1 });
+      await helper.load(redisNode, flow);
+      const outDb1 = helper.getNode("out-samename-db1");
+      const probe0 = directRedis({ db: 0 });
+      const probe1 = directRedis({ db: 1 });
 
-    outDb1.receive({ payload: "valueB" });
+      outDb1.receive({ payload: "valueB" });
 
-    let inDb0, inDb1;
-    try {
-      inDb1 = await waitForListValue(probe1, key);
-      inDb0 = await probe0.lrange(key, 0, -1);
-    } finally {
-      await Promise.all([probe0.del(key), probe1.del(key)]);
-      probe0.disconnect();
-      probe1.disconnect();
+      let inDb0, inDb1;
+      try {
+        inDb1 = await waitForListValue(probe1, key);
+        inDb0 = await probe0.lrange(key, 0, -1);
+      } finally {
+        await Promise.all([probe0.del(key), probe1.del(key)]);
+        probe0.disconnect();
+        probe1.disconnect();
+      }
+
+      inDb1.should.eql(
+        ["valueB"],
+        "redis-out node pointed at db 1 should write to db 1 (got db1=" +
+          JSON.stringify(inDb1) +
+          ", db0=" +
+          JSON.stringify(inDb0) +
+          "). If the value landed in db 0, the two default-named " +
+          "'Local' configs are sharing one pooled connection."
+      );
     }
+  );
 
-    inDb1.should.eql(
-      ["valueB"],
-      "redis-out node pointed at db 1 should write to db 1 (got db1=" +
-        JSON.stringify(inDb1) +
-        ", db0=" +
-        JSON.stringify(inDb0) +
-        "). If the value landed in db 0, the two default-named " +
-        "'Local' configs are sharing one pooled connection."
-    );
-  });
+  it(
+    "rpush — calls node.error when the Redis write fails (WRONGTYPE)",
+    { timeout: 8000 },
+    async function () {
+      await helper.load(redisNode, makeOutFlow("rpush", "test:out:err:wrongtype", false));
+      const out = helper.getNode("out");
+      const c = direct();
 
-  it("rpush — calls node.error when the Redis write fails (WRONGTYPE)", async function () {
-    await helper.load(redisNode, makeOutFlow("rpush", "test:out:err:wrongtype", false));
-    const out = helper.getNode("out");
-    const c = direct();
+      let unhandled = null;
+      const onUnhandled = (reason) => {
+        unhandled = reason;
+      };
+      process.on("unhandledRejection", onUnhandled);
 
-    let unhandled = null;
-    const onUnhandled = (reason) => {
-      unhandled = reason;
-    };
-    process.on("unhandledRejection", onUnhandled);
+      try {
+        // Seed a STRING at the key so RPUSH fails with WRONGTYPE.
+        await c.set("test:out:err:wrongtype", "i-am-a-string");
+        const errored = new Promise((resolve) => out.once("call:error", resolve));
+        out.receive({ payload: "item" });
+        await errored;
+        // The write is awaited inside the node's own handler, so any rejection is caught
+        // synchronously there — an unhandledRejection would only appear if a stray
+        // fire-and-forget promise existed elsewhere. One extra tick after the observed
+        // node.error() call gives Node's unhandledRejection detection room to fire before
+        // we assert its absence; this is not a substitute for waiting on call:error above.
+        await new Promise((resolve) => setImmediate(resolve));
 
-    try {
-      // Seed a STRING at the key so RPUSH fails with WRONGTYPE.
-      await c.set("test:out:err:wrongtype", "i-am-a-string");
-      const errored = new Promise((resolve) => out.once("call:error", resolve));
-      out.receive({ payload: "item" });
-      await errored;
-      // The write is awaited inside the node's own handler, so any rejection is caught
-      // synchronously there — an unhandledRejection would only appear if a stray
-      // fire-and-forget promise existed elsewhere. One extra tick after the observed
-      // node.error() call gives Node's unhandledRejection detection room to fire before
-      // we assert its absence; this is not a substitute for waiting on call:error above.
-      await new Promise((resolve) => setImmediate(resolve));
-
-      out.error.callCount.should.be.above(0);
-      String(out.error.firstCall.args[0]).should.match(/WRONGTYPE/);
-      (unhandled === null).should.be.true();
-    } finally {
-      process.removeListener("unhandledRejection", onUnhandled);
-      c.disconnect();
+        out.error.callCount.should.be.above(0);
+        String(out.error.firstCall.args[0]).should.match(/WRONGTYPE/);
+        (unhandled === null).should.be.true();
+      } finally {
+        process.removeListener("unhandledRejection", onUnhandled);
+        c.disconnect();
+      }
     }
-  });
+  );
 });

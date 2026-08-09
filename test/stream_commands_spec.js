@@ -1,3 +1,4 @@
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { isCallSyntaxSupported } = require("./helpers/capability");
@@ -7,16 +8,14 @@ const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
 
 helper.init(require.resolve("node-red"));
 
-describe("Stream commands", function () {
-  this.timeout(5000);
-
+describe("Stream commands", () => {
   const configNode = redisConfigNode("config1", "Local");
 
-  beforeEach((done) => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => {
       helper.stopServer(() => {
         cleanupKeys("test:stream:*", done);
@@ -24,7 +23,7 @@ describe("Stream commands", function () {
     });
   });
 
-  it("should XADD entries and XLEN return entry count", function (done) {
+  it("should XADD entries and XLEN return entry count", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -100,7 +99,7 @@ describe("Stream commands", function () {
     });
   });
 
-  it("should XRANGE and XREVRANGE return entries in order", function (done) {
+  it("should XRANGE and XREVRANGE return entries in order", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -201,7 +200,7 @@ describe("Stream commands", function () {
     });
   });
 
-  it("should XREAD return entries from a stream", function (done) {
+  it("should XREAD return entries from a stream", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -274,7 +273,7 @@ describe("Stream commands", function () {
     });
   });
 
-  it("should XTRIM limit stream length", function (done) {
+  it("should XTRIM limit stream length", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -389,7 +388,7 @@ describe("Stream commands", function () {
     });
   });
 
-  it("should XDEL remove a specific entry by ID", function (done) {
+  it("should XDEL remove a specific entry by ID", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -460,233 +459,241 @@ describe("Stream commands", function () {
     });
   });
 
-  it("should XGROUP CREATE and XINFO GROUPS show group details", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "xadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XADD",
-        name: "XADD",
-        topic: "",
-        params: "[]",
-        wires: [["xadd-helper"]],
-      },
-      { id: "xadd-helper", type: "helper" },
-      {
-        id: "xgroup-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XGROUP",
-        name: "XGROUP",
-        topic: "",
-        params: "[]",
-        wires: [["xgroup-helper"]],
-      },
-      { id: "xgroup-helper", type: "helper" },
-      {
-        id: "xinfo-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XINFO",
-        name: "XINFO",
-        topic: "",
-        params: "[]",
-        wires: [["xinfo-helper"]],
-      },
-      { id: "xinfo-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should XGROUP CREATE and XINFO GROUPS show group details",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "xadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XADD",
+          name: "XADD",
+          topic: "",
+          params: "[]",
+          wires: [["xadd-helper"]],
+        },
+        { id: "xadd-helper", type: "helper" },
+        {
+          id: "xgroup-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XGROUP",
+          name: "XGROUP",
+          topic: "",
+          params: "[]",
+          wires: [["xgroup-helper"]],
+        },
+        { id: "xgroup-helper", type: "helper" },
+        {
+          id: "xinfo-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XINFO",
+          name: "XINFO",
+          topic: "",
+          params: "[]",
+          wires: [["xinfo-helper"]],
+        },
+        { id: "xinfo-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const xaddNode = helper.getNode("xadd-node");
-      const xaddHelper = helper.getNode("xadd-helper");
-      const xgroupNode = helper.getNode("xgroup-node");
-      const xgroupHelper = helper.getNode("xgroup-helper");
-      const xinfoNode = helper.getNode("xinfo-node");
-      const xinfoHelper = helper.getNode("xinfo-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const xaddNode = helper.getNode("xadd-node");
+        const xaddHelper = helper.getNode("xadd-helper");
+        const xgroupNode = helper.getNode("xgroup-node");
+        const xgroupHelper = helper.getNode("xgroup-helper");
+        const xinfoNode = helper.getNode("xinfo-node");
+        const xinfoHelper = helper.getNode("xinfo-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      xinfoHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload.length.should.be.above(0);
-          delNode.receive({ topic: "test:stream:xgroup" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        xinfoHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload.length.should.be.above(0);
+            delNode.receive({ topic: "test:stream:xgroup" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      xgroupHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("OK");
-          xinfoNode.receive({
-            topic: "GROUPS",
-            payload: "test:stream:xgroup",
+        xgroupHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("OK");
+            xinfoNode.receive({
+              topic: "GROUPS",
+              payload: "test:stream:xgroup",
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        xaddHelper.on("input", () => {
+          xgroupNode.receive({
+            payload: ["CREATE", "test:stream:xgroup", "mygroup", "0"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      xaddHelper.on("input", () => {
-        xgroupNode.receive({
-          payload: ["CREATE", "test:stream:xgroup", "mygroup", "0"],
+        xaddNode.receive({
+          topic: "test:stream:xgroup",
+          payload: ["*", "f1", "v1"],
         });
       });
+    }
+  );
 
-      xaddNode.receive({
-        topic: "test:stream:xgroup",
-        payload: ["*", "f1", "v1"],
-      });
-    });
-  });
+  it(
+    "should XREADGROUP read messages and XACK acknowledge them",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "xadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XADD",
+          name: "XADD",
+          topic: "",
+          params: "[]",
+          wires: [["xadd-helper"]],
+        },
+        { id: "xadd-helper", type: "helper" },
+        {
+          id: "xgroup-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XGROUP",
+          name: "XGROUP",
+          topic: "",
+          params: "[]",
+          wires: [["xgroup-helper"]],
+        },
+        { id: "xgroup-helper", type: "helper" },
+        {
+          id: "xreadgroup-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XREADGROUP",
+          name: "XREADGROUP",
+          topic: "",
+          params: "[]",
+          wires: [["xreadgroup-helper"]],
+        },
+        { id: "xreadgroup-helper", type: "helper" },
+        {
+          id: "xack-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XACK",
+          name: "XACK",
+          topic: "",
+          params: "[]",
+          wires: [["xack-helper"]],
+        },
+        { id: "xack-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-  it("should XREADGROUP read messages and XACK acknowledge them", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "xadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XADD",
-        name: "XADD",
-        topic: "",
-        params: "[]",
-        wires: [["xadd-helper"]],
-      },
-      { id: "xadd-helper", type: "helper" },
-      {
-        id: "xgroup-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XGROUP",
-        name: "XGROUP",
-        topic: "",
-        params: "[]",
-        wires: [["xgroup-helper"]],
-      },
-      { id: "xgroup-helper", type: "helper" },
-      {
-        id: "xreadgroup-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XREADGROUP",
-        name: "XREADGROUP",
-        topic: "",
-        params: "[]",
-        wires: [["xreadgroup-helper"]],
-      },
-      { id: "xreadgroup-helper", type: "helper" },
-      {
-        id: "xack-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XACK",
-        name: "XACK",
-        topic: "",
-        params: "[]",
-        wires: [["xack-helper"]],
-      },
-      { id: "xack-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+      helper.load(redisNode, flow, () => {
+        const xaddNode = helper.getNode("xadd-node");
+        const xaddHelper = helper.getNode("xadd-helper");
+        const xgroupNode = helper.getNode("xgroup-node");
+        const xgroupHelper = helper.getNode("xgroup-helper");
+        const xreadgroupNode = helper.getNode("xreadgroup-node");
+        const xreadgroupHelper = helper.getNode("xreadgroup-helper");
+        const xackNode = helper.getNode("xack-node");
+        const xackHelper = helper.getNode("xack-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-    helper.load(redisNode, flow, () => {
-      const xaddNode = helper.getNode("xadd-node");
-      const xaddHelper = helper.getNode("xadd-helper");
-      const xgroupNode = helper.getNode("xgroup-node");
-      const xgroupHelper = helper.getNode("xgroup-helper");
-      const xreadgroupNode = helper.getNode("xreadgroup-node");
-      const xreadgroupHelper = helper.getNode("xreadgroup-helper");
-      const xackNode = helper.getNode("xack-node");
-      const xackHelper = helper.getNode("xack-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+        delHelper.on("input", () => {
+          done();
+        });
 
-      delHelper.on("input", () => {
-        done();
-      });
+        xackHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(1);
+            delNode.receive({ topic: "test:stream:xreadgroup" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      xackHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(1);
-          delNode.receive({ topic: "test:stream:xreadgroup" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        xreadgroupHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload.length.should.equal(1);
+            const streamEntries = msg.payload[0][1];
+            const entryId = streamEntries[0][0];
+            xackNode.receive({
+              topic: "test:stream:xreadgroup",
+              payload: ["mygrp", entryId],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      xreadgroupHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload.length.should.equal(1);
-          const streamEntries = msg.payload[0][1];
-          const entryId = streamEntries[0][0];
-          xackNode.receive({
-            topic: "test:stream:xreadgroup",
-            payload: ["mygrp", entryId],
+        xgroupHelper.on("input", () => {
+          xreadgroupNode.receive({
+            payload: [
+              "GROUP",
+              "mygrp",
+              "consumer1",
+              "COUNT",
+              "10",
+              "STREAMS",
+              "test:stream:xreadgroup",
+              ">",
+            ],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      xgroupHelper.on("input", () => {
-        xreadgroupNode.receive({
-          payload: [
-            "GROUP",
-            "mygrp",
-            "consumer1",
-            "COUNT",
-            "10",
-            "STREAMS",
-            "test:stream:xreadgroup",
-            ">",
-          ],
+        xaddHelper.on("input", () => {
+          xgroupNode.receive({
+            payload: ["CREATE", "test:stream:xreadgroup", "mygrp", "0"],
+          });
+        });
+
+        xaddNode.receive({
+          topic: "test:stream:xreadgroup",
+          payload: ["*", "f1", "v1"],
         });
       });
+    }
+  );
 
-      xaddHelper.on("input", () => {
-        xgroupNode.receive({
-          payload: ["CREATE", "test:stream:xreadgroup", "mygrp", "0"],
-        });
-      });
-
-      xaddNode.receive({
-        topic: "test:stream:xreadgroup",
-        payload: ["*", "f1", "v1"],
-      });
-    });
-  });
-
-  it("should XPENDING show pending message summary", function (done) {
+  it("should XPENDING show pending message summary", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -806,7 +813,7 @@ describe("Stream commands", function () {
     });
   });
 
-  it("should XSETID update the last ID of a stream", function (done) {
+  it("should XSETID update the last ID of a stream", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -900,133 +907,137 @@ describe("Stream commands", function () {
     });
   });
 
-  it("should XCLAIM reassign a pending message to another consumer", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "xadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XADD",
-        name: "XADD",
-        topic: "",
-        params: "[]",
-        wires: [["xadd-helper"]],
-      },
-      { id: "xadd-helper", type: "helper" },
-      {
-        id: "xgroup-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XGROUP",
-        name: "XGROUP",
-        topic: "",
-        params: "[]",
-        wires: [["xgroup-helper"]],
-      },
-      { id: "xgroup-helper", type: "helper" },
-      {
-        id: "xreadgroup-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XREADGROUP",
-        name: "XREADGROUP",
-        topic: "",
-        params: "[]",
-        wires: [["xreadgroup-helper"]],
-      },
-      { id: "xreadgroup-helper", type: "helper" },
-      {
-        id: "xclaim-node",
-        type: "redis-command",
-        server: "config1",
-        command: "XCLAIM",
-        name: "XCLAIM",
-        topic: "",
-        params: "[]",
-        wires: [["xclaim-helper"]],
-      },
-      { id: "xclaim-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should XCLAIM reassign a pending message to another consumer",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "xadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XADD",
+          name: "XADD",
+          topic: "",
+          params: "[]",
+          wires: [["xadd-helper"]],
+        },
+        { id: "xadd-helper", type: "helper" },
+        {
+          id: "xgroup-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XGROUP",
+          name: "XGROUP",
+          topic: "",
+          params: "[]",
+          wires: [["xgroup-helper"]],
+        },
+        { id: "xgroup-helper", type: "helper" },
+        {
+          id: "xreadgroup-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XREADGROUP",
+          name: "XREADGROUP",
+          topic: "",
+          params: "[]",
+          wires: [["xreadgroup-helper"]],
+        },
+        { id: "xreadgroup-helper", type: "helper" },
+        {
+          id: "xclaim-node",
+          type: "redis-command",
+          server: "config1",
+          command: "XCLAIM",
+          name: "XCLAIM",
+          topic: "",
+          params: "[]",
+          wires: [["xclaim-helper"]],
+        },
+        { id: "xclaim-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const xaddNode = helper.getNode("xadd-node");
-      const xaddHelper = helper.getNode("xadd-helper");
-      const xgroupNode = helper.getNode("xgroup-node");
-      const xgroupHelper = helper.getNode("xgroup-helper");
-      const xreadgroupNode = helper.getNode("xreadgroup-node");
-      const xreadgroupHelper = helper.getNode("xreadgroup-helper");
-      const xclaimNode = helper.getNode("xclaim-node");
-      const xclaimHelper = helper.getNode("xclaim-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const xaddNode = helper.getNode("xadd-node");
+        const xaddHelper = helper.getNode("xadd-helper");
+        const xgroupNode = helper.getNode("xgroup-node");
+        const xgroupHelper = helper.getNode("xgroup-helper");
+        const xreadgroupNode = helper.getNode("xreadgroup-node");
+        const xreadgroupHelper = helper.getNode("xreadgroup-helper");
+        const xclaimNode = helper.getNode("xclaim-node");
+        const xclaimHelper = helper.getNode("xclaim-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      xclaimHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload.length.should.be.above(0);
-          delNode.receive({ topic: "test:stream:xclaim" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        xclaimHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload.length.should.be.above(0);
+            delNode.receive({ topic: "test:stream:xclaim" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      xreadgroupHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          const entryId = msg.payload[0][1][0][0];
-          xclaimNode.receive({
-            payload: ["test:stream:xclaim", "xclaimgroup", "consumer2", "0", entryId],
+        xreadgroupHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            const entryId = msg.payload[0][1][0][0];
+            xclaimNode.receive({
+              payload: ["test:stream:xclaim", "xclaimgroup", "consumer2", "0", entryId],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        xgroupHelper.on("input", () => {
+          xreadgroupNode.receive({
+            payload: [
+              "GROUP",
+              "xclaimgroup",
+              "consumer1",
+              "COUNT",
+              "10",
+              "STREAMS",
+              "test:stream:xclaim",
+              ">",
+            ],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      xgroupHelper.on("input", () => {
-        xreadgroupNode.receive({
-          payload: [
-            "GROUP",
-            "xclaimgroup",
-            "consumer1",
-            "COUNT",
-            "10",
-            "STREAMS",
-            "test:stream:xclaim",
-            ">",
-          ],
+        xaddHelper.on("input", () => {
+          xgroupNode.receive({
+            payload: ["CREATE", "test:stream:xclaim", "xclaimgroup", "0"],
+          });
+        });
+
+        xaddNode.receive({
+          topic: "test:stream:xclaim",
+          payload: ["*", "f1", "v1"],
         });
       });
+    }
+  );
 
-      xaddHelper.on("input", () => {
-        xgroupNode.receive({
-          payload: ["CREATE", "test:stream:xclaim", "xclaimgroup", "0"],
-        });
-      });
-
-      xaddNode.receive({
-        topic: "test:stream:xclaim",
-        payload: ["*", "f1", "v1"],
-      });
-    });
-  });
-
-  it("should XAUTOCLAIM reassign idle pending messages", function (done) {
+  it("should XAUTOCLAIM reassign idle pending messages", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1147,7 +1158,7 @@ describe("Stream commands", function () {
     });
   });
 
-  it("should XINFO STREAM return stream metadata", function (done) {
+  it("should XINFO STREAM return stream metadata", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1256,144 +1267,164 @@ describe("Stream commands", function () {
   // across every requested stream (COUNT still caps entries per stream); MAXSIZE caps the
   // total reply size in bytes. Both must keep preserving the legacy nested
   // [[stream, [[id, fields]]]] shape under RESP3 (see CASE_SENSITIVE_TRANSFORM_COMMANDS).
-  it("XREAD MAXCOUNT caps the total entries across streams, combining with per-stream COUNT", async function () {
-    if (
-      !(await isCallSyntaxSupported([
-        "XREAD",
-        "MAXCOUNT",
-        "1",
-        "STREAMS",
-        "test:stream:capability-probe:xread",
-        "0",
-      ]))
-    ) {
-      this.skip();
+  it(
+    "XREAD MAXCOUNT caps the total entries across streams, combining with per-stream COUNT",
+    { timeout: 5000 },
+    async function (t) {
+      if (
+        !(await isCallSyntaxSupported([
+          "XREAD",
+          "MAXCOUNT",
+          "1",
+          "STREAMS",
+          "test:stream:capability-probe:xread",
+          "0",
+        ]))
+      ) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("xadd1", "XADD"),
+        helperNode("xadd1"),
+        commandNode("xadd2", "XADD"),
+        helperNode("xadd2"),
+        commandNode("xread", "XREAD"),
+        helperNode("xread"),
+      ]);
+
+      const s1 = "test:stream:maxcount:s1";
+      const s2 = "test:stream:maxcount:s2";
+      for (let i = 0; i < 3; i++) {
+        await invoke(helper, "xadd1", { topic: s1, payload: ["*", "f", "v" + i] });
+      }
+      for (let i = 0; i < 3; i++) {
+        await invoke(helper, "xadd2", { topic: s2, payload: ["*", "f", "v" + i] });
+      }
+
+      const result = await invoke(helper, "xread", {
+        payload: ["COUNT", "2", "MAXCOUNT", "3", "STREAMS", s1, s2, "0", "0"],
+      });
+
+      result.should.be.an.Array();
+      result.length.should.equal(2);
+      result[0][0].should.equal(s1);
+      result[0][1].should.be.an.Array();
+      result[0][1].length.should.equal(2);
+      result[1][0].should.equal(s2);
+      result[1][1].length.should.equal(1);
     }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("xadd1", "XADD"),
-      helperNode("xadd1"),
-      commandNode("xadd2", "XADD"),
-      helperNode("xadd2"),
-      commandNode("xread", "XREAD"),
-      helperNode("xread"),
-    ]);
+  );
 
-    const s1 = "test:stream:maxcount:s1";
-    const s2 = "test:stream:maxcount:s2";
-    for (let i = 0; i < 3; i++) {
-      await invoke(helper, "xadd1", { topic: s1, payload: ["*", "f", "v" + i] });
+  it(
+    "XREAD MAXSIZE truncates the reply while keeping the legacy shape",
+    { timeout: 5000 },
+    async function (t) {
+      if (
+        !(await isCallSyntaxSupported([
+          "XREAD",
+          "MAXSIZE",
+          "1",
+          "STREAMS",
+          "test:stream:capability-probe:xread",
+          "0",
+        ]))
+      ) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("xadd", "XADD"),
+        helperNode("xadd"),
+        commandNode("xread", "XREAD"),
+        helperNode("xread"),
+      ]);
+
+      const key = "test:stream:maxsize:s1";
+      await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v0"] });
+      await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v1"] });
+
+      const result = await invoke(helper, "xread", {
+        payload: ["MAXSIZE", "1", "STREAMS", key, "0"],
+      });
+
+      result.should.be.an.Array();
+      result.length.should.equal(1);
+      result[0][0].should.equal(key);
+      result[0][1].should.be.an.Array();
+      result[0][1].length.should.equal(1);
     }
-    for (let i = 0; i < 3; i++) {
-      await invoke(helper, "xadd2", { topic: s2, payload: ["*", "f", "v" + i] });
+  );
+
+  it(
+    "XREADGROUP MAXCOUNT preserves the legacy shape for consumer-group reads",
+    { timeout: 5000 },
+    async function (t) {
+      if (!(await isXreadgroupOptionSupported(["MAXCOUNT", "1"]))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("xadd", "XADD"),
+        helperNode("xadd"),
+        commandNode("xgroup", "XGROUP"),
+        helperNode("xgroup"),
+        commandNode("xreadgroup", "XREADGROUP"),
+        helperNode("xreadgroup"),
+      ]);
+
+      const key = "test:stream:maxcount:group:s1";
+      await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v0"] });
+      await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v1"] });
+      await invoke(helper, "xgroup", { payload: ["CREATE", key, "cg", "0"] });
+
+      const result = await invoke(helper, "xreadgroup", {
+        payload: ["GROUP", "cg", "consumer", "MAXCOUNT", "1", "STREAMS", key, ">"],
+      });
+
+      result.should.be.an.Array();
+      result.length.should.equal(1);
+      result[0][0].should.equal(key);
+      result[0][1].should.be.an.Array();
+      result[0][1].length.should.equal(1);
     }
+  );
 
-    const result = await invoke(helper, "xread", {
-      payload: ["COUNT", "2", "MAXCOUNT", "3", "STREAMS", s1, s2, "0", "0"],
-    });
+  it(
+    "XREADGROUP combines COUNT and MAXSIZE while preserving the legacy shape",
+    { timeout: 5000 },
+    async function (t) {
+      if (!(await isXreadgroupOptionSupported(["COUNT", "2", "MAXSIZE", "1"]))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("xadd", "XADD"),
+        helperNode("xadd"),
+        commandNode("xgroup", "XGROUP"),
+        helperNode("xgroup"),
+        commandNode("xreadgroup", "XREADGROUP"),
+        helperNode("xreadgroup"),
+      ]);
 
-    result.should.be.an.Array();
-    result.length.should.equal(2);
-    result[0][0].should.equal(s1);
-    result[0][1].should.be.an.Array();
-    result[0][1].length.should.equal(2);
-    result[1][0].should.equal(s2);
-    result[1][1].length.should.equal(1);
-  });
+      const key = "test:stream:maxsize:group:s1";
+      await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v0"] });
+      await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v1"] });
+      await invoke(helper, "xgroup", { payload: ["CREATE", key, "cg", "0"] });
 
-  it("XREAD MAXSIZE truncates the reply while keeping the legacy shape", async function () {
-    if (
-      !(await isCallSyntaxSupported([
-        "XREAD",
-        "MAXSIZE",
-        "1",
-        "STREAMS",
-        "test:stream:capability-probe:xread",
-        "0",
-      ]))
-    ) {
-      this.skip();
+      const result = await invoke(helper, "xreadgroup", {
+        payload: ["GROUP", "cg", "consumer", "COUNT", "2", "MAXSIZE", "1", "STREAMS", key, ">"],
+      });
+
+      result.should.be.an.Array();
+      result.length.should.equal(1);
+      result[0][0].should.equal(key);
+      result[0][1].should.be.an.Array();
+      result[0][1].length.should.equal(1);
     }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("xadd", "XADD"),
-      helperNode("xadd"),
-      commandNode("xread", "XREAD"),
-      helperNode("xread"),
-    ]);
-
-    const key = "test:stream:maxsize:s1";
-    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v0"] });
-    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v1"] });
-
-    const result = await invoke(helper, "xread", {
-      payload: ["MAXSIZE", "1", "STREAMS", key, "0"],
-    });
-
-    result.should.be.an.Array();
-    result.length.should.equal(1);
-    result[0][0].should.equal(key);
-    result[0][1].should.be.an.Array();
-    result[0][1].length.should.equal(1);
-  });
-
-  it("XREADGROUP MAXCOUNT preserves the legacy shape for consumer-group reads", async function () {
-    if (!(await isXreadgroupOptionSupported(["MAXCOUNT", "1"]))) {
-      this.skip();
-    }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("xadd", "XADD"),
-      helperNode("xadd"),
-      commandNode("xgroup", "XGROUP"),
-      helperNode("xgroup"),
-      commandNode("xreadgroup", "XREADGROUP"),
-      helperNode("xreadgroup"),
-    ]);
-
-    const key = "test:stream:maxcount:group:s1";
-    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v0"] });
-    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v1"] });
-    await invoke(helper, "xgroup", { payload: ["CREATE", key, "cg", "0"] });
-
-    const result = await invoke(helper, "xreadgroup", {
-      payload: ["GROUP", "cg", "consumer", "MAXCOUNT", "1", "STREAMS", key, ">"],
-    });
-
-    result.should.be.an.Array();
-    result.length.should.equal(1);
-    result[0][0].should.equal(key);
-    result[0][1].should.be.an.Array();
-    result[0][1].length.should.equal(1);
-  });
-
-  it("XREADGROUP combines COUNT and MAXSIZE while preserving the legacy shape", async function () {
-    if (!(await isXreadgroupOptionSupported(["COUNT", "2", "MAXSIZE", "1"]))) {
-      this.skip();
-    }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("xadd", "XADD"),
-      helperNode("xadd"),
-      commandNode("xgroup", "XGROUP"),
-      helperNode("xgroup"),
-      commandNode("xreadgroup", "XREADGROUP"),
-      helperNode("xreadgroup"),
-    ]);
-
-    const key = "test:stream:maxsize:group:s1";
-    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v0"] });
-    await invoke(helper, "xadd", { topic: key, payload: ["*", "f", "v1"] });
-    await invoke(helper, "xgroup", { payload: ["CREATE", key, "cg", "0"] });
-
-    const result = await invoke(helper, "xreadgroup", {
-      payload: ["GROUP", "cg", "consumer", "COUNT", "2", "MAXSIZE", "1", "STREAMS", key, ">"],
-    });
-
-    result.should.be.an.Array();
-    result.length.should.equal(1);
-    result[0][0].should.equal(key);
-    result[0][1].should.be.an.Array();
-    result[0][1].length.should.equal(1);
-  });
+  );
 });

@@ -1,3 +1,4 @@
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
@@ -5,16 +6,14 @@ const { directRedis, redisConfigNode } = require("./helpers/deployment");
 
 helper.init(require.resolve("node-red"));
 
-describe("Bit commands", function () {
-  this.timeout(5000);
-
+describe("Bit commands", () => {
   const configNode = redisConfigNode("config1", "Local");
 
-  beforeEach((done) => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => {
       helper.stopServer(() => {
         cleanupKeys("test:bit:*", done);
@@ -22,7 +21,7 @@ describe("Bit commands", function () {
     });
   });
 
-  it("should SETBIT set a bit and GETBIT retrieve it", function (done) {
+  it("should SETBIT set a bit and GETBIT retrieve it", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -109,7 +108,7 @@ describe("Bit commands", function () {
     });
   });
 
-  it("should BITCOUNT return number of set bits", function (done) {
+  it("should BITCOUNT return number of set bits", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -176,7 +175,7 @@ describe("Bit commands", function () {
     });
   });
 
-  it("should BITPOS find first 0 bit position", function (done) {
+  it("should BITPOS find first 0 bit position", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -239,7 +238,7 @@ describe("Bit commands", function () {
     });
   });
 
-  it("should BITOP perform bitwise AND on two keys", function (done) {
+  it("should BITOP perform bitwise AND on two keys", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -327,87 +326,91 @@ describe("Bit commands", function () {
     });
   });
 
-  it("should BITFIELD SET and GET an unsigned 8-bit integer", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "bitfield-set-node",
-        type: "redis-command",
-        server: "config1",
-        command: "BITFIELD",
-        name: "BITFIELD_SET",
-        topic: "",
-        params: "[]",
-        wires: [["bitfield-set-helper"]],
-      },
-      { id: "bitfield-set-helper", type: "helper" },
-      {
-        id: "bitfield-get-node",
-        type: "redis-command",
-        server: "config1",
-        command: "BITFIELD",
-        name: "BITFIELD_GET",
-        topic: "",
-        params: "[]",
-        wires: [["bitfield-get-helper"]],
-      },
-      { id: "bitfield-get-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should BITFIELD SET and GET an unsigned 8-bit integer",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "bitfield-set-node",
+          type: "redis-command",
+          server: "config1",
+          command: "BITFIELD",
+          name: "BITFIELD_SET",
+          topic: "",
+          params: "[]",
+          wires: [["bitfield-set-helper"]],
+        },
+        { id: "bitfield-set-helper", type: "helper" },
+        {
+          id: "bitfield-get-node",
+          type: "redis-command",
+          server: "config1",
+          command: "BITFIELD",
+          name: "BITFIELD_GET",
+          topic: "",
+          params: "[]",
+          wires: [["bitfield-get-helper"]],
+        },
+        { id: "bitfield-get-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const bitfieldSetNode = helper.getNode("bitfield-set-node");
-      const bitfieldSetHelper = helper.getNode("bitfield-set-helper");
-      const bitfieldGetNode = helper.getNode("bitfield-get-node");
-      const bitfieldGetHelper = helper.getNode("bitfield-get-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const bitfieldSetNode = helper.getNode("bitfield-set-node");
+        const bitfieldSetHelper = helper.getNode("bitfield-set-helper");
+        const bitfieldGetNode = helper.getNode("bitfield-get-node");
+        const bitfieldGetHelper = helper.getNode("bitfield-get-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        bitfieldGetHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal(200);
+            delNode.receive({ topic: "test:bit:field" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        bitfieldSetHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal(0);
+            bitfieldGetNode.receive({
+              topic: "test:bit:field",
+              payload: ["GET", "u8", "0"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        bitfieldSetNode.receive({
+          topic: "test:bit:field",
+          payload: ["SET", "u8", "0", "200"],
+        });
       });
+    }
+  );
 
-      bitfieldGetHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal(200);
-          delNode.receive({ topic: "test:bit:field" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      bitfieldSetHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal(0);
-          bitfieldGetNode.receive({
-            topic: "test:bit:field",
-            payload: ["GET", "u8", "0"],
-          });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      bitfieldSetNode.receive({
-        topic: "test:bit:field",
-        payload: ["SET", "u8", "0", "200"],
-      });
-    });
-  });
-
-  it("should BITFIELD_RO read a bitfield value read-only", function (done) {
+  it("should BITFIELD_RO read a bitfield value read-only", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
