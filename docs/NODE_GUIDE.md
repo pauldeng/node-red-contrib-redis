@@ -38,6 +38,10 @@ Key implementation points:
   saving; an absolute path is recommended but not enforced — a relative path is a soft warning,
   not an error. Existing TCP `family` options are retained when the editor opens or the
   transport is temporarily toggled, but are excluded from Unix socket options
+- the editor help text's "Unix socket setup" entry covers enabling `unixsocket`/
+  `unixsocketperm` on the Redis/Valkey server and sharing the socket path into a container
+  via a bind mount — read that before writing anything Unix-socket-related here or in
+  `docs/TESTING.md`, so the server-side setup story stays in one place
 
 Safe changes:
 

@@ -59,7 +59,9 @@ The runner executes these deployments sequentially:
 - `single-unix`: a temporary Unix-socket-only deployment (TCP disabled, `port 0`) proving the
   `redis-config` Unix socket transport end-to-end. The socket file lives in a host directory
   created with `fs.mkdtempSync` and bind-mounted in for this one deployment, then removed
-  afterward — never committed to the repo.
+  afterward — never committed to the repo. `test/deployments/single-unix/redis.conf` and
+  `compose.yml` are a working example of the general setup (`unixsocket`/`unixsocketperm` plus
+  a shared bind mount) documented in the `redis-config` help text's "Unix socket setup" entry.
 - `memorydb`: optional AWS MemoryDB topology specs when `MEMORYDB_ENABLED=1`.
 
 Blocking and pub/sub tests wait for Redis-observable state (`CLIENT LIST` and `PUBSUB
