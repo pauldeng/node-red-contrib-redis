@@ -37,7 +37,9 @@ jobs:
         run: |
           npm pack --dry-run --ignore-scripts --json > /tmp/package-manifest.json
           node <<'NODE'
-          const manifest = require('/tmp/package-manifest.json')[0];
+          const parsed = require('/tmp/package-manifest.json');
+          // npm <12 prints a top-level array; npm 12+ prints an object keyed by package name.
+          const manifest = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
           const allowed = /^(CHANGELOG\.md|LICENSE|README\.md|package\.json|redis\.(?:js|html))$|^(?:icons|examples|docs\/assets\/readme)\//;
           const unexpected = manifest.files.map((file) => file.path).filter((file) => !allowed.test(file));
           if (unexpected.length > 0) {
