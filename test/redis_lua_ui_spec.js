@@ -1,4 +1,5 @@
 "use strict";
+const { describe, it, before } = require("node:test");
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
@@ -44,8 +45,8 @@ function hasObjectField(fieldsBody, name) {
   return objectPattern.test(fieldsBody);
 }
 
-describe("redis-lua-script UI template", function () {
-  describe("RED.library.create type", function () {
+describe("redis-lua-script UI template", () => {
+  describe("RED.library.create type", () => {
     it("does not contain a period", function () {
       const type = extractLibraryOption(html, "type");
       assert.ok(type !== null, "RED.library.create() type should be present in the template");
@@ -80,7 +81,7 @@ describe("redis-lua-script UI template", function () {
     });
   });
 
-  describe("RED.library.create ext", function () {
+  describe("RED.library.create ext", () => {
     it("save dialog default filename uses .lua extension", function () {
       const ext = extractLibraryOption(html, "ext");
       assert.strictEqual(
@@ -91,7 +92,7 @@ describe("redis-lua-script UI template", function () {
     });
   });
 
-  describe("RED.library.create fields", function () {
+  describe("RED.library.create fields", () => {
     let fieldsBody;
     before(function () {
       fieldsBody = extractFieldsBody(html);
@@ -132,7 +133,7 @@ describe("redis-lua-script UI template", function () {
   });
 });
 
-describe("redis-lua-script mode/readonly/fname fields", function () {
+describe("redis-lua-script mode/readonly/fname fields", () => {
   function luaDefaultsBody() {
     const m = html.match(
       /registerType\(["']redis-lua-script["'],[\s\S]*?defaults:\s*\{([\s\S]*?)\},\s*\n\s*label:/
@@ -198,7 +199,7 @@ describe("redis-lua-script mode/readonly/fname fields", function () {
   });
 });
 
-describe("redis-config UI template", function () {
+describe("redis-config UI template", () => {
   it("opens saved environment-variable configs on the ConnString tab", function () {
     assert.match(
       html,
@@ -275,7 +276,7 @@ function extractSingleModeSection(source) {
   return source.slice(start, end);
 }
 
-describe("redis-config Single-mode Unix socket transport", function () {
+describe("redis-config Single-mode Unix socket transport", () => {
   var singleSection = extractSingleModeSection(html);
 
   it("declares a Transport select defaulting to TCP before Unix socket", function () {
@@ -393,7 +394,7 @@ function extractRedisCommandBlock(source) {
   return source.slice(templateIdx, scriptEnd);
 }
 
-describe("redis-command UI template", function () {
+describe("redis-command UI template", () => {
   const templateBlock = extractRedisCommandBlock(html);
 
   it("registers command as a required, editable input, not a closed select", function () {

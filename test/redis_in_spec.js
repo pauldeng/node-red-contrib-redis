@@ -1,5 +1,6 @@
 "use strict";
 const helper = require("node-red-node-test-helper");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
 const { directRedis, redisConfigNode } = require("./helpers/deployment");
@@ -72,14 +73,12 @@ function makeInFlow(command, topic, obj, extra = {}) {
   ];
 }
 
-describe("redis-in node", function () {
-  this.timeout(8000);
-
-  beforeEach(function (done) {
+describe("redis-in node", () => {
+  beforeEach(function (t, done) {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper
       .unload()
       .then(() =>
@@ -89,7 +88,7 @@ describe("redis-in node", function () {
 
   // ── blpop ──────────────────────────────────────────────────────────────
 
-  it("blpop — emits raw string payload with key as topic", function (done) {
+  it("blpop — emits raw string payload with key as topic", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeInFlow("blpop", "test:in:blpop", false), function () {
       const h = helper.getNode("h");
       const c = direct();
@@ -113,7 +112,7 @@ describe("redis-in node", function () {
     });
   });
 
-  it("blpop — parses JSON payload when obj is true", function (done) {
+  it("blpop — parses JSON payload when obj is true", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeInFlow("blpop", "test:in:blpop:json", true), function () {
       const h = helper.getNode("h");
       const c = direct();
@@ -137,80 +136,92 @@ describe("redis-in node", function () {
     });
   });
 
-  it("blpop — falls back to raw string for invalid JSON when obj is true", function (done) {
-    helper.load(redisNode, makeInFlow("blpop", "test:in:blpop:fallback", true), function () {
-      const h = helper.getNode("h");
-      const c = direct();
+  it(
+    "blpop — falls back to raw string for invalid JSON when obj is true",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeInFlow("blpop", "test:in:blpop:fallback", true), function () {
+        const h = helper.getNode("h");
+        const c = direct();
 
-      h.on("input", function (msg) {
-        c.disconnect();
-        try {
-          msg.payload.should.equal("not-json");
-          done();
-        } catch (e) {
-          done(e);
-        }
+        h.on("input", function (msg) {
+          c.disconnect();
+          try {
+            msg.payload.should.equal("not-json");
+            done();
+          } catch (e) {
+            done(e);
+          }
+        });
+
+        triggerWhenReady(
+          waitForBlockedCommand(c, "blpop"),
+          () => c.rpush("test:in:blpop:fallback", "not-json"),
+          done
+        );
       });
+    }
+  );
 
-      triggerWhenReady(
-        waitForBlockedCommand(c, "blpop"),
-        () => c.rpush("test:in:blpop:fallback", "not-json"),
-        done
-      );
-    });
-  });
+  it(
+    "blpop — topic in output reflects actual Redis key, not msg.topic",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeInFlow("blpop", "test:in:blpop:key", false), function () {
+        const h = helper.getNode("h");
+        const c = direct();
 
-  it("blpop — topic in output reflects actual Redis key, not msg.topic", function (done) {
-    helper.load(redisNode, makeInFlow("blpop", "test:in:blpop:key", false), function () {
-      const h = helper.getNode("h");
-      const c = direct();
+        h.on("input", function (msg) {
+          c.disconnect();
+          try {
+            msg.topic.should.equal("test:in:blpop:key");
+            done();
+          } catch (e) {
+            done(e);
+          }
+        });
 
-      h.on("input", function (msg) {
-        c.disconnect();
-        try {
-          msg.topic.should.equal("test:in:blpop:key");
-          done();
-        } catch (e) {
-          done(e);
-        }
+        triggerWhenReady(
+          waitForBlockedCommand(c, "blpop"),
+          () => c.rpush("test:in:blpop:key", "data"),
+          done
+        );
       });
-
-      triggerWhenReady(
-        waitForBlockedCommand(c, "blpop"),
-        () => c.rpush("test:in:blpop:key", "data"),
-        done
-      );
-    });
-  });
+    }
+  );
 
   // ── brpop ──────────────────────────────────────────────────────────────
 
-  it("brpop — emits raw string payload popped from right of list", function (done) {
-    helper.load(redisNode, makeInFlow("brpop", "test:in:brpop", false), function () {
-      const h = helper.getNode("h");
-      const c = direct();
+  it(
+    "brpop — emits raw string payload popped from right of list",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(redisNode, makeInFlow("brpop", "test:in:brpop", false), function () {
+        const h = helper.getNode("h");
+        const c = direct();
 
-      h.on("input", function (msg) {
-        c.disconnect();
-        try {
-          msg.topic.should.equal("test:in:brpop");
-          msg.payload.should.equal("world");
-          done();
-        } catch (e) {
-          done(e);
-        }
+        h.on("input", function (msg) {
+          c.disconnect();
+          try {
+            msg.topic.should.equal("test:in:brpop");
+            msg.payload.should.equal("world");
+            done();
+          } catch (e) {
+            done(e);
+          }
+        });
+
+        // lpush so the element is at right (brpop pops from right)
+        triggerWhenReady(
+          waitForBlockedCommand(c, "brpop"),
+          () => c.lpush("test:in:brpop", "world"),
+          done
+        );
       });
+    }
+  );
 
-      // lpush so the element is at right (brpop pops from right)
-      triggerWhenReady(
-        waitForBlockedCommand(c, "brpop"),
-        () => c.lpush("test:in:brpop", "world"),
-        done
-      );
-    });
-  });
-
-  it("brpop — parses JSON payload when obj is true", function (done) {
+  it("brpop — parses JSON payload when obj is true", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeInFlow("brpop", "test:in:brpop:json", true), function () {
       const h = helper.getNode("h");
       const c = direct();
@@ -233,7 +244,7 @@ describe("redis-in node", function () {
     });
   });
 
-  it("brpop — multiple messages received in order", function (done) {
+  it("brpop — multiple messages received in order", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeInFlow("brpop", "test:in:brpop:multi", false), function () {
       const h = helper.getNode("h");
       const c = direct();
@@ -267,7 +278,7 @@ describe("redis-in node", function () {
 
   // ── subscribe ──────────────────────────────────────────────────────────
 
-  it("subscribe — emits message published to the channel", function (done) {
+  it("subscribe — emits message published to the channel", { timeout: 8000 }, function (t, done) {
     helper.load(
       redisNode,
       makeInFlow("subscribe", "test:in:subscribe:ch", false, { timeout: 0 }),
@@ -295,7 +306,7 @@ describe("redis-in node", function () {
     );
   });
 
-  it("subscribe — parses JSON payload when obj is true", function (done) {
+  it("subscribe — parses JSON payload when obj is true", { timeout: 8000 }, function (t, done) {
     helper.load(
       redisNode,
       makeInFlow("subscribe", "test:in:subscribe:json", true, { timeout: 0 }),
@@ -323,98 +334,110 @@ describe("redis-in node", function () {
     );
   });
 
-  it("subscribe — falls back to raw string for invalid JSON when obj is true", function (done) {
-    helper.load(
-      redisNode,
-      makeInFlow("subscribe", "test:in:subscribe:fallback", true, { timeout: 0 }),
-      function () {
-        const h = helper.getNode("h");
-        const c = direct();
+  it(
+    "subscribe — falls back to raw string for invalid JSON when obj is true",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(
+        redisNode,
+        makeInFlow("subscribe", "test:in:subscribe:fallback", true, { timeout: 0 }),
+        function () {
+          const h = helper.getNode("h");
+          const c = direct();
 
-        h.on("input", function (msg) {
-          c.disconnect();
-          try {
-            msg.payload.should.equal("plain-text");
-            done();
-          } catch (e) {
-            done(e);
-          }
-        });
-
-        triggerWhenReady(
-          waitForRedisSubscription(c, "test:in:subscribe:fallback"),
-          () => c.publish("test:in:subscribe:fallback", "plain-text"),
-          done
-        );
-      }
-    );
-  });
-
-  it("subscribe — receives multiple messages on same channel", function (done) {
-    helper.load(
-      redisNode,
-      makeInFlow("subscribe", "test:in:subscribe:multi", false, { timeout: 0 }),
-      function () {
-        const h = helper.getNode("h");
-        const c = direct();
-        const received = [];
-
-        h.on("input", function (msg) {
-          received.push(msg.payload);
-          if (received.length === 3) {
+          h.on("input", function (msg) {
             c.disconnect();
             try {
-              received.should.eql(["msg1", "msg2", "msg3"]);
+              msg.payload.should.equal("plain-text");
               done();
             } catch (e) {
               done(e);
             }
-          }
-        });
+          });
 
-        triggerWhenReady(
-          waitForRedisSubscription(c, "test:in:subscribe:multi"),
-          async () => {
-            await c.publish("test:in:subscribe:multi", "msg1");
-            await c.publish("test:in:subscribe:multi", "msg2");
-            await c.publish("test:in:subscribe:multi", "msg3");
-          },
-          done
-        );
-      }
-    );
-  });
+          triggerWhenReady(
+            waitForRedisSubscription(c, "test:in:subscribe:fallback"),
+            () => c.publish("test:in:subscribe:fallback", "plain-text"),
+            done
+          );
+        }
+      );
+    }
+  );
+
+  it(
+    "subscribe — receives multiple messages on same channel",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(
+        redisNode,
+        makeInFlow("subscribe", "test:in:subscribe:multi", false, { timeout: 0 }),
+        function () {
+          const h = helper.getNode("h");
+          const c = direct();
+          const received = [];
+
+          h.on("input", function (msg) {
+            received.push(msg.payload);
+            if (received.length === 3) {
+              c.disconnect();
+              try {
+                received.should.eql(["msg1", "msg2", "msg3"]);
+                done();
+              } catch (e) {
+                done(e);
+              }
+            }
+          });
+
+          triggerWhenReady(
+            waitForRedisSubscription(c, "test:in:subscribe:multi"),
+            async () => {
+              await c.publish("test:in:subscribe:multi", "msg1");
+              await c.publish("test:in:subscribe:multi", "msg2");
+              await c.publish("test:in:subscribe:multi", "msg3");
+            },
+            done
+          );
+        }
+      );
+    }
+  );
 
   // ── psubscribe ─────────────────────────────────────────────────────────
 
-  it("psubscribe — emits msg.pattern and msg.topic for matching channels", function (done) {
-    helper.load(
-      redisNode,
-      makeInFlow("psubscribe", "test:in:ps:*", false, { timeout: 0 }),
-      function () {
-        const h = helper.getNode("h");
-        const c = direct();
+  it(
+    "psubscribe — emits msg.pattern and msg.topic for matching channels",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(
+        redisNode,
+        makeInFlow("psubscribe", "test:in:ps:*", false, { timeout: 0 }),
+        function () {
+          const h = helper.getNode("h");
+          const c = direct();
 
-        h.on("input", function (msg) {
-          c.disconnect();
-          try {
-            msg.pattern.should.equal("test:in:ps:*");
-            msg.topic.should.equal("test:in:ps:news");
-            msg.payload.should.equal("event");
-            done();
-          } catch (e) {
-            done(e);
-          }
-        });
+          h.on("input", function (msg) {
+            c.disconnect();
+            try {
+              msg.pattern.should.equal("test:in:ps:*");
+              msg.topic.should.equal("test:in:ps:news");
+              msg.payload.should.equal("event");
+              done();
+            } catch (e) {
+              done(e);
+            }
+          });
 
-        triggerWhenReady(
-          waitForRedisSubscription(c, "test:in:ps:*", true),
-          () => c.publish("test:in:ps:news", "event"),
-          done
-        );
-      }
-    );
-  });
+          triggerWhenReady(
+            waitForRedisSubscription(c, "test:in:ps:*", true),
+            () => c.publish("test:in:ps:news", "event"),
+            done
+          );
+        }
+      );
+    }
+  );
 
   // ── subscribe/psubscribe failure surfacing ─────────────────────────────
 
@@ -469,33 +492,41 @@ describe("redis-in node", function () {
     ];
   }
 
-  it("subscribe — reports a refused SUBSCRIBE instead of reporting connected", async function () {
-    await withAclUserDeniedPubsub(async function () {
-      await helper.load(redisNode, deniedPubsubFlow("subscribe", "test:in:subscribe:denied"));
-      const node = helper.getNode("in");
-      const reported = new Promise((resolve) => {
-        node.on("call:error", (call) => resolve(String(call.args[0])));
+  it(
+    "subscribe — reports a refused SUBSCRIBE instead of reporting connected",
+    { timeout: 8000 },
+    async function () {
+      await withAclUserDeniedPubsub(async function () {
+        await helper.load(redisNode, deniedPubsubFlow("subscribe", "test:in:subscribe:denied"));
+        const node = helper.getNode("in");
+        const reported = new Promise((resolve) => {
+          node.on("call:error", (call) => resolve(String(call.args[0])));
+        });
+        const red = waitForStatus(node, (status) => status.fill === "red");
+
+        (await reported).should.match(/NOPERM/i);
+        (await red).text.should.match(/subscribe/i);
       });
-      const red = waitForStatus(node, (status) => status.fill === "red");
+    }
+  );
 
-      (await reported).should.match(/NOPERM/i);
-      (await red).text.should.match(/subscribe/i);
-    });
-  });
+  it(
+    "psubscribe — reports a refused PSUBSCRIBE instead of reporting connected",
+    { timeout: 8000 },
+    async function () {
+      await withAclUserDeniedPubsub(async function () {
+        await helper.load(redisNode, deniedPubsubFlow("psubscribe", "test:in:psdenied:*"));
+        const node = helper.getNode("in");
+        const reported = new Promise((resolve) => {
+          node.on("call:error", (call) => resolve(String(call.args[0])));
+        });
+        const red = waitForStatus(node, (status) => status.fill === "red");
 
-  it("psubscribe — reports a refused PSUBSCRIBE instead of reporting connected", async function () {
-    await withAclUserDeniedPubsub(async function () {
-      await helper.load(redisNode, deniedPubsubFlow("psubscribe", "test:in:psdenied:*"));
-      const node = helper.getNode("in");
-      const reported = new Promise((resolve) => {
-        node.on("call:error", (call) => resolve(String(call.args[0])));
+        (await reported).should.match(/NOPERM/i);
+        (await red).text.should.match(/subscribe/i);
       });
-      const red = waitForStatus(node, (status) => status.fill === "red");
-
-      (await reported).should.match(/NOPERM/i);
-      (await red).text.should.match(/subscribe/i);
-    });
-  });
+    }
+  );
 
   // ── initial subscribe with enableOfflineQueue: false ────────────────────
 
@@ -556,73 +587,81 @@ describe("redis-in node", function () {
         publishTopic: "test:in:psubscribe:offlineq:one",
       },
     ].forEach(({ command, topic, publishTopic }) => {
-      it(`${command} — receives messages with enableOfflineQueue:false and lazyConnect:${lazyConnect}`, async function () {
-        await new Promise((resolve, reject) => {
-          helper.load(redisNode, offlineQueueFlow(command, topic, lazyConnect), (err) =>
-            err ? reject(err) : resolve()
-          );
-        });
-
-        const h = helper.getNode("h");
-        const c = direct();
-        try {
-          await waitForSubscription(c, command, topic);
-          const received = new Promise((resolve, reject) => {
-            const timer = setTimeout(
-              () => reject(new Error("Timed out waiting for " + command + " message")),
-              2000
+      it(
+        `${command} — receives messages with enableOfflineQueue:false and lazyConnect:${lazyConnect}`,
+        { timeout: 8000 },
+        async function () {
+          await new Promise((resolve, reject) => {
+            helper.load(redisNode, offlineQueueFlow(command, topic, lazyConnect), (err) =>
+              err ? reject(err) : resolve()
             );
-            h.once("input", (msg) => {
-              clearTimeout(timer);
-              resolve(msg);
-            });
           });
 
-          await c.publish(publishTopic, "hello offlineq");
-          const msg = await received;
-          msg.topic.should.equal(publishTopic);
-          msg.payload.should.equal("hello offlineq");
-          if (command === "psubscribe") {
-            msg.pattern.should.equal(topic);
+          const h = helper.getNode("h");
+          const c = direct();
+          try {
+            await waitForSubscription(c, command, topic);
+            const received = new Promise((resolve, reject) => {
+              const timer = setTimeout(
+                () => reject(new Error("Timed out waiting for " + command + " message")),
+                2000
+              );
+              h.once("input", (msg) => {
+                clearTimeout(timer);
+                resolve(msg);
+              });
+            });
+
+            await c.publish(publishTopic, "hello offlineq");
+            const msg = await received;
+            msg.topic.should.equal(publishTopic);
+            msg.payload.should.equal("hello offlineq");
+            if (command === "psubscribe") {
+              msg.pattern.should.equal(topic);
+            }
+          } finally {
+            c.disconnect();
           }
-        } finally {
-          c.disconnect();
         }
-      });
+      );
     });
   });
 
-  it("psubscribe — receives messages from multiple matching channels", function (done) {
-    helper.load(
-      redisNode,
-      makeInFlow("psubscribe", "test:in:psmulti:*", false, { timeout: 0 }),
-      function () {
-        const h = helper.getNode("h");
-        const c = direct();
-        const topics = [];
+  it(
+    "psubscribe — receives messages from multiple matching channels",
+    { timeout: 8000 },
+    function (t, done) {
+      helper.load(
+        redisNode,
+        makeInFlow("psubscribe", "test:in:psmulti:*", false, { timeout: 0 }),
+        function () {
+          const h = helper.getNode("h");
+          const c = direct();
+          const topics = [];
 
-        h.on("input", function (msg) {
-          topics.push(msg.topic);
-          if (topics.length === 2) {
-            c.disconnect();
-            try {
-              topics.sort().should.eql(["test:in:psmulti:alpha", "test:in:psmulti:beta"]);
-              done();
-            } catch (e) {
-              done(e);
+          h.on("input", function (msg) {
+            topics.push(msg.topic);
+            if (topics.length === 2) {
+              c.disconnect();
+              try {
+                topics.sort().should.eql(["test:in:psmulti:alpha", "test:in:psmulti:beta"]);
+                done();
+              } catch (e) {
+                done(e);
+              }
             }
-          }
-        });
+          });
 
-        setTimeout(() => {
-          c.publish("test:in:psmulti:alpha", "1");
-          c.publish("test:in:psmulti:beta", "2");
-        }, 300);
-      }
-    );
-  });
+          setTimeout(() => {
+            c.publish("test:in:psmulti:alpha", "1");
+            c.publish("test:in:psmulti:beta", "2");
+          }, 300);
+        }
+      );
+    }
+  );
 
-  it("psubscribe — parses JSON payload when obj is true", function (done) {
+  it("psubscribe — parses JSON payload when obj is true", { timeout: 8000 }, function (t, done) {
     helper.load(
       redisNode,
       makeInFlow("psubscribe", "test:in:psjson:*", true, { timeout: 0 }),
@@ -651,224 +690,252 @@ describe("redis-in node", function () {
 
   // ── xreadgroup ─────────────────────────────────────────────────────────
 
-  it("xreadgroup — receives stream message as field object when obj is true", function (done) {
-    const STREAM = "testinxrg";
-    const GROUP = "grp";
-    const c = direct();
+  it(
+    "xreadgroup — receives stream message as field object when obj is true",
+    { timeout: 8000 },
+    function (t, done) {
+      const STREAM = "testinxrg";
+      const GROUP = "grp";
+      const c = direct();
 
-    c.xgroup("CREATE", STREAM, GROUP, "0", "MKSTREAM")
-      .then(() => c.xadd(STREAM, "*", "field1", "val1", "field2", "val2"))
-      .then(() => {
-        helper.load(
-          redisNode,
-          makeInFlow("xreadgroup", `${STREAM}:>`, true, {
-            timeout: 0,
-            groupname: GROUP,
-            consumername: "consumer-1",
-          }),
-          function () {
-            const h = helper.getNode("h");
+      c.xgroup("CREATE", STREAM, GROUP, "0", "MKSTREAM")
+        .then(() => c.xadd(STREAM, "*", "field1", "val1", "field2", "val2"))
+        .then(() => {
+          helper.load(
+            redisNode,
+            makeInFlow("xreadgroup", `${STREAM}:>`, true, {
+              timeout: 0,
+              groupname: GROUP,
+              consumername: "consumer-1",
+            }),
+            function () {
+              const h = helper.getNode("h");
 
-            h.on("input", function (msg) {
-              c.disconnect();
-              try {
-                msg.stream.should.equal(STREAM);
-                msg.messageId.should.be.a.String();
-                msg.payload.should.be.an.Object();
-                msg.payload.field1.should.equal("val1");
-                msg.payload.field2.should.equal("val2");
-                done();
-              } catch (e) {
-                done(e);
-              }
-            });
-          }
-        );
-      })
-      .catch(done);
-  });
+              h.on("input", function (msg) {
+                c.disconnect();
+                try {
+                  msg.stream.should.equal(STREAM);
+                  msg.messageId.should.be.a.String();
+                  msg.payload.should.be.an.Object();
+                  msg.payload.field1.should.equal("val1");
+                  msg.payload.field2.should.equal("val2");
+                  done();
+                } catch (e) {
+                  done(e);
+                }
+              });
+            }
+          );
+        })
+        .catch(done);
+    }
+  );
 
-  it("xreadgroup — emits raw flat key-value array when obj is false", function (done) {
-    const STREAM = "testinxrgraw";
-    const GROUP = "grpraw";
-    const c = direct();
+  it(
+    "xreadgroup — emits raw flat key-value array when obj is false",
+    { timeout: 8000 },
+    function (t, done) {
+      const STREAM = "testinxrgraw";
+      const GROUP = "grpraw";
+      const c = direct();
 
-    c.xgroup("CREATE", STREAM, GROUP, "0", "MKSTREAM")
-      .then(() => c.xadd(STREAM, "*", "k", "v"))
-      .then(() => {
-        helper.load(
-          redisNode,
-          makeInFlow("xreadgroup", `${STREAM}:>`, false, {
-            timeout: 0,
-            groupname: GROUP,
-            consumername: "consumer-1",
-          }),
-          function () {
-            const h = helper.getNode("h");
+      c.xgroup("CREATE", STREAM, GROUP, "0", "MKSTREAM")
+        .then(() => c.xadd(STREAM, "*", "k", "v"))
+        .then(() => {
+          helper.load(
+            redisNode,
+            makeInFlow("xreadgroup", `${STREAM}:>`, false, {
+              timeout: 0,
+              groupname: GROUP,
+              consumername: "consumer-1",
+            }),
+            function () {
+              const h = helper.getNode("h");
 
-            h.on("input", function (msg) {
-              c.disconnect();
-              try {
-                msg.payload.should.be.an.Array();
-                msg.payload[0].should.equal("k");
-                msg.payload[1].should.equal("v");
-                done();
-              } catch (e) {
-                done(e);
-              }
-            });
-          }
-        );
-      })
-      .catch(done);
-  });
+              h.on("input", function (msg) {
+                c.disconnect();
+                try {
+                  msg.payload.should.be.an.Array();
+                  msg.payload[0].should.equal("k");
+                  msg.payload[1].should.equal("v");
+                  done();
+                } catch (e) {
+                  done(e);
+                }
+              });
+            }
+          );
+        })
+        .catch(done);
+    }
+  );
 
-  it("xreadgroup — accepts a stream key containing colons (namespaced key)", async function () {
-    // Stream IDs (>, $, 0, 123-0) can never contain a colon, so the topic must be
-    // split at its FINAL colon, not its first — otherwise a namespaced key like
-    // "test:in:xrg:namespaced" is torn apart into the wrong stream/id.
-    const STREAM = "test:in:xrg:namespaced";
-    const GROUP = "grp-namespaced";
-    const c = direct();
+  it(
+    "xreadgroup — accepts a stream key containing colons (namespaced key)",
+    { timeout: 8000 },
+    async function () {
+      // Stream IDs (>, $, 0, 123-0) can never contain a colon, so the topic must be
+      // split at its FINAL colon, not its first — otherwise a namespaced key like
+      // "test:in:xrg:namespaced" is torn apart into the wrong stream/id.
+      const STREAM = "test:in:xrg:namespaced";
+      const GROUP = "grp-namespaced";
+      const c = direct();
 
-    await c.xgroup("CREATE", STREAM, GROUP, "0", "MKSTREAM");
-    await c.xadd(STREAM, "*", "field", "value");
+      await c.xgroup("CREATE", STREAM, GROUP, "0", "MKSTREAM");
+      await c.xadd(STREAM, "*", "field", "value");
 
-    await helper.load(
-      redisNode,
-      makeInFlow("xreadgroup", `${STREAM}:>`, true, {
-        timeout: 0,
-        groupname: GROUP,
-        consumername: "consumer-1",
-      })
-    );
-    const h = helper.getNode("h");
-    const msg = await new Promise((resolve) => h.once("input", resolve));
-    c.disconnect();
+      await helper.load(
+        redisNode,
+        makeInFlow("xreadgroup", `${STREAM}:>`, true, {
+          timeout: 0,
+          groupname: GROUP,
+          consumername: "consumer-1",
+        })
+      );
+      const h = helper.getNode("h");
+      const msg = await new Promise((resolve) => h.once("input", resolve));
+      c.disconnect();
 
-    msg.stream.should.equal(STREAM);
-    msg.payload.field.should.equal("value");
-  });
+      msg.stream.should.equal(STREAM);
+      msg.payload.field.should.equal("value");
+    }
+  );
 
-  it("xreadgroup — calls node.error and does not start the loop when Topic has no stream/id separator", async function () {
-    await helper.load(
-      redisNode,
-      makeInFlow("xreadgroup", "no-colon-here", true, {
-        timeout: 0,
-        groupname: "grp",
-        consumername: "consumer-1",
-      })
-    );
-    const inNode = helper.getNode("in");
-    await new Promise((resolve) => inNode.once("call:error", resolve));
+  it(
+    "xreadgroup — calls node.error and does not start the loop when Topic has no stream/id separator",
+    { timeout: 8000 },
+    async function () {
+      await helper.load(
+        redisNode,
+        makeInFlow("xreadgroup", "no-colon-here", true, {
+          timeout: 0,
+          groupname: "grp",
+          consumername: "consumer-1",
+        })
+      );
+      const inNode = helper.getNode("in");
+      await new Promise((resolve) => inNode.once("call:error", resolve));
 
-    inNode.error.callCount.should.be.above(0);
-    String(inNode.error.firstCall.args[0]).should.match(/stream-key.*:.*id|Topic/i);
-  });
+      inNode.error.callCount.should.be.above(0);
+      String(inNode.error.firstCall.args[0]).should.match(/stream-key.*:.*id|Topic/i);
+    }
+  );
 
-  it("xreadgroup — warns with XGROUP CREATE guidance when the consumer group is missing", async function () {
-    // docs/TROUBLESHOOTING.md tells users to look for this warning, so its text is part of
-    // the node's contract rather than an incidental log line.
-    const STREAM = "test:in:xrg:nogroup";
-    const c = direct();
-    await c.del(STREAM);
-    await c.xadd(STREAM, "*", "field", "value");
-    c.disconnect();
+  it(
+    "xreadgroup — warns with XGROUP CREATE guidance when the consumer group is missing",
+    { timeout: 8000 },
+    async function () {
+      // docs/TROUBLESHOOTING.md tells users to look for this warning, so its text is part of
+      // the node's contract rather than an incidental log line.
+      const STREAM = "test:in:xrg:nogroup";
+      const c = direct();
+      await c.del(STREAM);
+      await c.xadd(STREAM, "*", "field", "value");
+      c.disconnect();
 
-    await helper.load(
-      redisNode,
-      makeInFlow("xreadgroup", `${STREAM}:>`, true, {
-        timeout: 0,
-        groupname: "grp-missing",
-        consumername: "consumer-1",
-      })
-    );
-    const inNode = helper.getNode("in");
-    const warned = new Promise((resolve) =>
-      inNode.once("call:warn", (call) => resolve(String(call.args[0])))
-    );
-    const retrying = waitForStatus(inNode, (status) => status.text === "retrying");
+      await helper.load(
+        redisNode,
+        makeInFlow("xreadgroup", `${STREAM}:>`, true, {
+          timeout: 0,
+          groupname: "grp-missing",
+          consumername: "consumer-1",
+        })
+      );
+      const inNode = helper.getNode("in");
+      const warned = new Promise((resolve) =>
+        inNode.once("call:warn", (call) => resolve(String(call.args[0])))
+      );
+      const retrying = waitForStatus(inNode, (status) => status.text === "retrying");
 
-    const warning = await warned;
-    warning.should.match(/grp-missing/);
-    warning.should.match(/XGROUP CREATE/);
-    (await retrying).fill.should.equal("yellow");
-  });
+      const warning = await warned;
+      warning.should.match(/grp-missing/);
+      warning.should.match(/XGROUP CREATE/);
+      (await retrying).fill.should.equal("yellow");
+    }
+  );
 
-  it("xreadgroup — clears retrying status after the consumer group is created", async function () {
-    // After NOGROUP recovery the loop keeps delivering, but a stale yellow "retrying"
-    // status must not stick for the life of the node.
-    const STREAM = "test:in:xrg:statusrecover";
-    const GROUP = "grp-statusrecover";
-    const c = direct();
-    await c.del(STREAM);
+  it(
+    "xreadgroup — clears retrying status after the consumer group is created",
+    { timeout: 8000 },
+    async function () {
+      // After NOGROUP recovery the loop keeps delivering, but a stale yellow "retrying"
+      // status must not stick for the life of the node.
+      const STREAM = "test:in:xrg:statusrecover";
+      const GROUP = "grp-statusrecover";
+      const c = direct();
+      await c.del(STREAM);
 
-    await helper.load(
-      redisNode,
-      makeInFlow("xreadgroup", `${STREAM}:>`, true, {
-        timeout: 0,
-        groupname: GROUP,
-        consumername: "consumer-1",
-      })
-    );
-    const inNode = helper.getNode("in");
-    const h = helper.getNode("h");
-    await waitForStatus(inNode, (status) => status.text === "retrying");
+      await helper.load(
+        redisNode,
+        makeInFlow("xreadgroup", `${STREAM}:>`, true, {
+          timeout: 0,
+          groupname: GROUP,
+          consumername: "consumer-1",
+        })
+      );
+      const inNode = helper.getNode("in");
+      const h = helper.getNode("h");
+      await waitForStatus(inNode, (status) => status.text === "retrying");
 
-    // Status is restored before send(), so watch for green before the recovery write.
-    const connectedP = waitForStatus(
-      inNode,
-      (status) => status.fill === "green" && status.text === "connected",
-      8000
-    );
-    const msgP = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("no message after XGROUP CREATE")), 8000);
-      h.once("input", (m) => {
-        clearTimeout(timer);
-        resolve(m);
+      // Status is restored before send(), so watch for green before the recovery write.
+      const connectedP = waitForStatus(
+        inNode,
+        (status) => status.fill === "green" && status.text === "connected",
+        8000
+      );
+      const msgP = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("no message after XGROUP CREATE")), 8000);
+        h.once("input", (m) => {
+          clearTimeout(timer);
+          resolve(m);
+        });
       });
-    });
 
-    await c.xgroup("CREATE", STREAM, GROUP, "$", "MKSTREAM");
-    await c.xadd(STREAM, "*", "k", "after-recovery");
+      await c.xgroup("CREATE", STREAM, GROUP, "$", "MKSTREAM");
+      await c.xadd(STREAM, "*", "k", "after-recovery");
 
-    const msg = await msgP;
-    msg.payload.k.should.equal("after-recovery");
-    (await connectedP).fill.should.equal("green");
-    c.disconnect();
-  });
+      const msg = await msgP;
+      msg.payload.k.should.equal("after-recovery");
+      (await connectedP).fill.should.equal("green");
+      c.disconnect();
+    }
+  );
 
   // ── bzpopmin ───────────────────────────────────────────────────────────
 
-  it("bzpopmin — emits {member, score} popping the lowest-score element first", function (done) {
-    const c = direct();
+  it(
+    "bzpopmin — emits {member, score} popping the lowest-score element first",
+    { timeout: 8000 },
+    function (t, done) {
+      const c = direct();
 
-    // Pre-populate both members so bzpopmin sees them together and picks the minimum
-    Promise.all([
-      c.zadd("test:in:bzpopmin", 5, "task-high"),
-      c.zadd("test:in:bzpopmin", 1, "task-low"),
-    ])
-      .then(() => {
-        helper.load(redisNode, makeInFlow("bzpopmin", "test:in:bzpopmin", false), function () {
-          const h = helper.getNode("h");
+      // Pre-populate both members so bzpopmin sees them together and picks the minimum
+      Promise.all([
+        c.zadd("test:in:bzpopmin", 5, "task-high"),
+        c.zadd("test:in:bzpopmin", 1, "task-low"),
+      ])
+        .then(() => {
+          helper.load(redisNode, makeInFlow("bzpopmin", "test:in:bzpopmin", false), function () {
+            const h = helper.getNode("h");
 
-          h.on("input", function (msg) {
-            c.disconnect();
-            try {
-              msg.topic.should.equal("test:in:bzpopmin");
-              msg.payload.member.should.equal("task-low");
-              msg.payload.score.should.equal(1);
-              done();
-            } catch (e) {
-              done(e);
-            }
+            h.on("input", function (msg) {
+              c.disconnect();
+              try {
+                msg.topic.should.equal("test:in:bzpopmin");
+                msg.payload.member.should.equal("task-low");
+                msg.payload.score.should.equal(1);
+                done();
+              } catch (e) {
+                done(e);
+              }
+            });
           });
-        });
-      })
-      .catch(done);
-  });
+        })
+        .catch(done);
+    }
+  );
 
-  it("bzpopmin — parses JSON member when obj is true", function (done) {
+  it("bzpopmin — parses JSON member when obj is true", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeInFlow("bzpopmin", "test:in:bzpopmin:json", true), function () {
       const h = helper.getNode("h");
       const c = direct();
@@ -895,35 +962,39 @@ describe("redis-in node", function () {
 
   // ── bzpopmax ───────────────────────────────────────────────────────────
 
-  it("bzpopmax — emits {member, score} popping the highest-score element first", function (done) {
-    const c = direct();
+  it(
+    "bzpopmax — emits {member, score} popping the highest-score element first",
+    { timeout: 8000 },
+    function (t, done) {
+      const c = direct();
 
-    // Pre-populate both members so bzpopmax sees them together and picks the maximum
-    Promise.all([
-      c.zadd("test:in:bzpopmax", 10, "task-high"),
-      c.zadd("test:in:bzpopmax", 1, "task-low"),
-    ])
-      .then(() => {
-        helper.load(redisNode, makeInFlow("bzpopmax", "test:in:bzpopmax", false), function () {
-          const h = helper.getNode("h");
+      // Pre-populate both members so bzpopmax sees them together and picks the maximum
+      Promise.all([
+        c.zadd("test:in:bzpopmax", 10, "task-high"),
+        c.zadd("test:in:bzpopmax", 1, "task-low"),
+      ])
+        .then(() => {
+          helper.load(redisNode, makeInFlow("bzpopmax", "test:in:bzpopmax", false), function () {
+            const h = helper.getNode("h");
 
-          h.on("input", function (msg) {
-            c.disconnect();
-            try {
-              msg.topic.should.equal("test:in:bzpopmax");
-              msg.payload.member.should.equal("task-high");
-              msg.payload.score.should.equal(10);
-              done();
-            } catch (e) {
-              done(e);
-            }
+            h.on("input", function (msg) {
+              c.disconnect();
+              try {
+                msg.topic.should.equal("test:in:bzpopmax");
+                msg.payload.member.should.equal("task-high");
+                msg.payload.score.should.equal(10);
+                done();
+              } catch (e) {
+                done(e);
+              }
+            });
           });
-        });
-      })
-      .catch(done);
-  });
+        })
+        .catch(done);
+    }
+  );
 
-  it("bzpopmax — score is returned as a float", function (done) {
+  it("bzpopmax — score is returned as a float", { timeout: 8000 }, function (t, done) {
     helper.load(redisNode, makeInFlow("bzpopmax", "test:in:bzpopmax:float", false), function () {
       const h = helper.getNode("h");
       const c = direct();
@@ -948,139 +1019,158 @@ describe("redis-in node", function () {
 
   // ── auto-recovery ────────────────────────────────────────────────────────
 
-  it("blpop — clears retrying status after a transient connection error", async function () {
-    const originalBlpop = Redis.prototype.blpop;
-    Redis.prototype.blpop = function () {
-      Redis.prototype.blpop = originalBlpop;
-      return Promise.reject(new Error("Connection is closed."));
-    };
+  it(
+    "blpop — clears retrying status after a transient connection error",
+    { timeout: 8000 },
+    async function () {
+      const originalBlpop = Redis.prototype.blpop;
+      Redis.prototype.blpop = function () {
+        Redis.prototype.blpop = originalBlpop;
+        return Promise.reject(new Error("Connection is closed."));
+      };
 
-    try {
-      await helper.load(redisNode, makeInFlow("blpop", "test:in:recover:status", false));
-      const inNode = helper.getNode("in");
-      const h = helper.getNode("h");
-      await waitForStatus(inNode, (s) => s.fill === "yellow" && s.text === "retrying");
+      try {
+        await helper.load(redisNode, makeInFlow("blpop", "test:in:recover:status", false));
+        const inNode = helper.getNode("in");
+        const h = helper.getNode("h");
+        await waitForStatus(inNode, (s) => s.fill === "yellow" && s.text === "retrying");
 
-      // Status is restored before send(), so watch for green before the recovery write.
-      const connectedP = waitForStatus(
-        inNode,
-        (status) => status.fill === "green" && status.text === "connected",
-        8000
-      );
-      const msgP = new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("no message after blpop recovery")), 8000);
-        h.once("input", (m) => {
-          clearTimeout(timer);
-          resolve(m);
+        // Status is restored before send(), so watch for green before the recovery write.
+        const connectedP = waitForStatus(
+          inNode,
+          (status) => status.fill === "green" && status.text === "connected",
+          8000
+        );
+        const msgP = new Promise((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error("no message after blpop recovery")),
+            8000
+          );
+          h.once("input", (m) => {
+            clearTimeout(timer);
+            resolve(m);
+          });
         });
-      });
 
-      const c = direct();
-      await c.rpush("test:in:recover:status", "after-recovery");
-      const msg = await msgP;
-      msg.payload.should.equal("after-recovery");
-      (await connectedP).fill.should.equal("green");
-      c.disconnect();
-    } finally {
-      Redis.prototype.blpop = originalBlpop;
+        const c = direct();
+        await c.rpush("test:in:recover:status", "after-recovery");
+        const msg = await msgP;
+        msg.payload.should.equal("after-recovery");
+        (await connectedP).fill.should.equal("green");
+        c.disconnect();
+      } finally {
+        Redis.prototype.blpop = originalBlpop;
+      }
     }
-  });
+  );
 
-  it("blpop — recovers and keeps consuming after a transient connection error", function (done) {
-    const originalBlpop = Redis.prototype.blpop;
-    // Reject the first blpop (simulate a dropped connection), then restore the
-    // real implementation for every subsequent call.
-    Redis.prototype.blpop = function () {
-      Redis.prototype.blpop = originalBlpop;
-      return Promise.reject(new Error("Connection is closed."));
-    };
-
-    helper.load(redisNode, makeInFlow("blpop", "test:in:recover:blpop", false), function () {
-      const h = helper.getNode("h");
-      const c = direct();
-      const giveUp = setTimeout(function () {
+  it(
+    "blpop — recovers and keeps consuming after a transient connection error",
+    { timeout: 8000 },
+    function (t, done) {
+      const originalBlpop = Redis.prototype.blpop;
+      // Reject the first blpop (simulate a dropped connection), then restore the
+      // real implementation for every subsequent call.
+      Redis.prototype.blpop = function () {
         Redis.prototype.blpop = originalBlpop;
-        c.disconnect();
-        done(new Error("no message received — blocking loop did not recover from the error"));
-      }, 4000);
+        return Promise.reject(new Error("Connection is closed."));
+      };
 
-      h.on("input", function (msg) {
-        clearTimeout(giveUp);
-        Redis.prototype.blpop = originalBlpop;
-        c.disconnect();
-        try {
-          msg.payload.should.equal("after-recovery");
-          done();
-        } catch (e) {
-          done(e);
-        }
-      });
+      helper.load(redisNode, makeInFlow("blpop", "test:in:recover:blpop", false), function () {
+        const h = helper.getNode("h");
+        const c = direct();
+        const giveUp = setTimeout(function () {
+          Redis.prototype.blpop = originalBlpop;
+          c.disconnect();
+          done(new Error("no message received — blocking loop did not recover from the error"));
+        }, 4000);
 
-      triggerWhenReady(
-        waitForBlockedCommand(c, "blpop"),
-        () => c.rpush("test:in:recover:blpop", "after-recovery"),
-        done
-      );
-    });
-  });
+        h.on("input", function (msg) {
+          clearTimeout(giveUp);
+          Redis.prototype.blpop = originalBlpop;
+          c.disconnect();
+          try {
+            msg.payload.should.equal("after-recovery");
+            done();
+          } catch (e) {
+            done(e);
+          }
+        });
 
-  it("xreadgroup — recovers and keeps consuming after a transient connection error", async function () {
-    const STREAM = "testinxrgrecover";
-    const GROUP = "grprecover";
-    const c = direct();
-    const originalXreadgroup = Redis.prototype.xreadgroup;
-    Redis.prototype.xreadgroup = function () {
-      Redis.prototype.xreadgroup = originalXreadgroup;
-      return Promise.reject(new Error("Connection is closed."));
-    };
-
-    try {
-      await c.xgroup("CREATE", STREAM, GROUP, "0", "MKSTREAM");
-      await c.xadd(STREAM, "*", "k", "v");
-
-      await helper.load(
-        redisNode,
-        makeInFlow("xreadgroup", `${STREAM}:>`, true, {
-          timeout: 0,
-          groupname: GROUP,
-          consumername: "consumer-1",
-        })
-      );
-      const h = helper.getNode("h");
-      const received = new Promise((resolve) => h.once("input", resolve));
-      let giveUpTimer;
-      const giveUp = new Promise((_, reject) => {
-        giveUpTimer = setTimeout(
-          () => reject(new Error("no message received — xreadgroup loop did not recover")),
-          4000
+        triggerWhenReady(
+          waitForBlockedCommand(c, "blpop"),
+          () => c.rpush("test:in:recover:blpop", "after-recovery"),
+          done
         );
       });
-      const msg = await Promise.race([received, giveUp]);
-      clearTimeout(giveUpTimer);
-
-      msg.payload.k.should.equal("v");
-    } finally {
-      Redis.prototype.xreadgroup = originalXreadgroup;
-      c.disconnect();
     }
-  });
+  );
 
-  it("blpop — stops cleanly when the node closes during a retry backoff", async function () {
-    const originalBlpop = Redis.prototype.blpop;
-    // Always reject so the loop stays in the retry/backoff cycle.
-    Redis.prototype.blpop = function () {
-      return Promise.reject(new Error("Connection is closed."));
-    };
+  it(
+    "xreadgroup — recovers and keeps consuming after a transient connection error",
+    { timeout: 8000 },
+    async function () {
+      const STREAM = "testinxrgrecover";
+      const GROUP = "grprecover";
+      const c = direct();
+      const originalXreadgroup = Redis.prototype.xreadgroup;
+      Redis.prototype.xreadgroup = function () {
+        Redis.prototype.xreadgroup = originalXreadgroup;
+        return Promise.reject(new Error("Connection is closed."));
+      };
 
-    try {
-      await helper.load(redisNode, makeInFlow("blpop", "test:in:recover:close", false));
-      const inNode = helper.getNode("in");
-      // Wait for the node to actually enter its retry/backoff status before closing it,
-      // rather than guessing how long that takes.
-      await waitForStatus(inNode, (s) => s.fill === "yellow" && s.text === "retrying");
-      await helper.unload();
-    } finally {
-      Redis.prototype.blpop = originalBlpop;
+      try {
+        await c.xgroup("CREATE", STREAM, GROUP, "0", "MKSTREAM");
+        await c.xadd(STREAM, "*", "k", "v");
+
+        await helper.load(
+          redisNode,
+          makeInFlow("xreadgroup", `${STREAM}:>`, true, {
+            timeout: 0,
+            groupname: GROUP,
+            consumername: "consumer-1",
+          })
+        );
+        const h = helper.getNode("h");
+        const received = new Promise((resolve) => h.once("input", resolve));
+        let giveUpTimer;
+        const giveUp = new Promise((_, reject) => {
+          giveUpTimer = setTimeout(
+            () => reject(new Error("no message received — xreadgroup loop did not recover")),
+            4000
+          );
+        });
+        const msg = await Promise.race([received, giveUp]);
+        clearTimeout(giveUpTimer);
+
+        msg.payload.k.should.equal("v");
+      } finally {
+        Redis.prototype.xreadgroup = originalXreadgroup;
+        c.disconnect();
+      }
     }
-  });
+  );
+
+  it(
+    "blpop — stops cleanly when the node closes during a retry backoff",
+    { timeout: 8000 },
+    async function () {
+      const originalBlpop = Redis.prototype.blpop;
+      // Always reject so the loop stays in the retry/backoff cycle.
+      Redis.prototype.blpop = function () {
+        return Promise.reject(new Error("Connection is closed."));
+      };
+
+      try {
+        await helper.load(redisNode, makeInFlow("blpop", "test:in:recover:close", false));
+        const inNode = helper.getNode("in");
+        // Wait for the node to actually enter its retry/backoff status before closing it,
+        // rather than guessing how long that takes.
+        await waitForStatus(inNode, (s) => s.fill === "yellow" && s.text === "retrying");
+        await helper.unload();
+      } finally {
+        Redis.prototype.blpop = originalBlpop;
+      }
+    }
+  );
 });

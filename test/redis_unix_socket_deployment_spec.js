@@ -7,6 +7,7 @@
 // scripts/run-deployment-tests.js for this one deployment (single-unix); only
 // REDIS_UNIX_SOCKET_PATH is read here.
 
+const { describe, it, before, after } = require("node:test");
 const Redis = require("ioredis");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
@@ -43,10 +44,8 @@ function unixConfigNode(id = "config1", name = "Local") {
   };
 }
 
-describe("Unix socket transport (TCP disabled)", function () {
-  this.timeout(10000);
-
-  before(async function () {
+describe("Unix socket transport (TCP disabled)", () => {
+  before(async () => {
     await new Promise((resolve, reject) =>
       helper.startServer((err) => (err ? reject(err) : resolve()))
     );
@@ -59,32 +58,40 @@ describe("Unix socket transport (TCP disabled)", function () {
     ]);
   });
 
-  after(async function () {
+  after(async () => {
     await helper.unload();
     await helper.stopServer();
     await cleanupUnixSocketKeys("test:unixsocket:*");
   });
 
-  it("redis-config's connection test succeeds over a Unix socket path", async function () {
-    const res = await helper
-      .request()
-      .post("/redis-config/test")
-      .send({
-        id: "config1",
-        cluster: false,
-        optionsType: "json",
-        options: JSON.stringify(unixSocketOptions()),
-      })
-      .expect(200);
+  it(
+    "redis-config's connection test succeeds over a Unix socket path",
+    { timeout: 10000 },
+    async () => {
+      const res = await helper
+        .request()
+        .post("/redis-config/test")
+        .send({
+          id: "config1",
+          cluster: false,
+          optionsType: "json",
+          options: JSON.stringify(unixSocketOptions()),
+        })
+        .expect(200);
 
-    res.body.success.should.equal(true);
-    res.body.response.should.equal("PONG");
-    res.body.message.should.match(/PING -> PONG/);
-  });
+      res.body.success.should.equal(true);
+      res.body.response.should.equal("PONG");
+      res.body.message.should.match(/PING -> PONG/);
+    }
+  );
 
-  it("runs normal redis-command traffic over the socket with no TCP port involved", async function () {
-    const key = "test:unixsocket:string";
-    (await invoke(helper, "set", { topic: key, payload: "value" })).should.equal("OK");
-    (await invoke(helper, "get", { topic: key })).should.equal("value");
-  });
+  it(
+    "runs normal redis-command traffic over the socket with no TCP port involved",
+    { timeout: 10000 },
+    async () => {
+      const key = "test:unixsocket:string";
+      (await invoke(helper, "set", { topic: key, payload: "value" })).should.equal("OK");
+      (await invoke(helper, "get", { topic: key })).should.equal("value");
+    }
+  );
 });

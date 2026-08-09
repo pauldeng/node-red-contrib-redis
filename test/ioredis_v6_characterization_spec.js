@@ -13,6 +13,7 @@
 // zrevrangebyscore), verified to match the pre-upgrade ioredis v5/RESP2 shapes.
 // See docs/superpowers/specs/2026-08-08-ioredis-v6-resp3-unix-socket-release-plan.md.
 
+const { describe, it, before, after } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
@@ -172,9 +173,7 @@ function buildFlow() {
   return flow;
 }
 
-describe("ioredis v6 case-sensitive reply transform characterization", function () {
-  this.timeout(8000);
-
+describe("ioredis v6 case-sensitive reply transform characterization", () => {
   let vectorSetsSupported;
   let probe;
 
@@ -197,68 +196,89 @@ describe("ioredis v6 case-sensitive reply transform characterization", function 
     );
   });
 
-  it("HRANDFIELD WITHVALUES returns the legacy flat [field, value, ...] array", async function () {
-    const key = "test:v6char:hash";
-    await probe.call("HSET", key, "f1", "v1", "f2", "v2");
-    const result = await invoke(helper, "hrandfield", { payload: [key, "2", "WITHVALUES"] });
-    assertFlatPairsContain(
-      result,
-      [
-        ["f1", "v1"],
-        ["f2", "v2"],
-      ],
-      equalString
-    );
-  });
-
-  it("VSIM WITHSCORES returns the legacy flat [member, score, ...] array", async function () {
-    if (!vectorSetsSupported) {
-      this.skip();
+  it(
+    "HRANDFIELD WITHVALUES returns the legacy flat [field, value, ...] array",
+    { timeout: 8000 },
+    async function () {
+      const key = "test:v6char:hash";
+      await probe.call("HSET", key, "f1", "v1", "f2", "v2");
+      const result = await invoke(helper, "hrandfield", { payload: [key, "2", "WITHVALUES"] });
+      assertFlatPairsContain(
+        result,
+        [
+          ["f1", "v1"],
+          ["f2", "v2"],
+        ],
+        equalString
+      );
     }
-    const key = "test:v6char:vectorset";
-    await probe.call("VADD", key, "VALUES", "3", "1", "2", "3", "elem1");
-    const result = await invoke(helper, "vsim", {
-      payload: [key, "VALUES", "3", "1", "2", "3", "WITHSCORES"],
-    });
-    result.should.be.an.Array();
-    result.length.should.equal(2);
-    result[0].should.equal("elem1");
-    result[1].should.be.a.String();
-    parseFloat(result[1]).should.be.approximately(1, 0.001);
-  });
+  );
 
-  it("XREAD returns the legacy nested [[stream, [[id, fields]]]] shape", async function () {
-    const key = "test:v6char:stream:xread";
-    await probe.call("XADD", key, "*", "f1", "v1");
-    const result = await invoke(helper, "xread", {
-      payload: ["COUNT", "10", "STREAMS", key, "0"],
-    });
-    result.should.be.an.Array();
-    result.length.should.equal(1);
-    result[0][0].should.equal(key);
-    result[0][1].should.be.an.Array();
-    result[0][1][0][1].should.eql(["f1", "v1"]);
-  });
+  it(
+    "VSIM WITHSCORES returns the legacy flat [member, score, ...] array",
+    { timeout: 8000 },
+    async function (t) {
+      if (!vectorSetsSupported) {
+        t.skip();
+        return;
+      }
+      const key = "test:v6char:vectorset";
+      await probe.call("VADD", key, "VALUES", "3", "1", "2", "3", "elem1");
+      const result = await invoke(helper, "vsim", {
+        payload: [key, "VALUES", "3", "1", "2", "3", "WITHSCORES"],
+      });
+      result.should.be.an.Array();
+      result.length.should.equal(2);
+      result[0].should.equal("elem1");
+      result[1].should.be.a.String();
+      parseFloat(result[1]).should.be.approximately(1, 0.001);
+    }
+  );
 
-  it("XREADGROUP returns the legacy nested [[stream, [[id, fields]]]] shape", async function () {
-    const key = "test:v6char:stream:xreadgroup";
-    await probe.call("XADD", key, "*", "f1", "v1");
-    await probe.call("XGROUP", "CREATE", key, "v6chargrp", "0");
-    const result = await invoke(helper, "xreadgroup", {
-      payload: ["GROUP", "v6chargrp", "cons1", "COUNT", "10", "STREAMS", key, ">"],
-    });
-    result.should.be.an.Array();
-    result.length.should.equal(1);
-    result[0][0].should.equal(key);
-    result[0][1][0][1].should.eql(["f1", "v1"]);
-  });
+  it(
+    "XREAD returns the legacy nested [[stream, [[id, fields]]]] shape",
+    { timeout: 8000 },
+    async function () {
+      const key = "test:v6char:stream:xread";
+      await probe.call("XADD", key, "*", "f1", "v1");
+      const result = await invoke(helper, "xread", {
+        payload: ["COUNT", "10", "STREAMS", key, "0"],
+      });
+      result.should.be.an.Array();
+      result.length.should.equal(1);
+      result[0][0].should.equal(key);
+      result[0][1].should.be.an.Array();
+      result[0][1][0][1].should.eql(["f1", "v1"]);
+    }
+  );
+
+  it(
+    "XREADGROUP returns the legacy nested [[stream, [[id, fields]]]] shape",
+    { timeout: 8000 },
+    async function () {
+      const key = "test:v6char:stream:xreadgroup";
+      await probe.call("XADD", key, "*", "f1", "v1");
+      await probe.call("XGROUP", "CREATE", key, "v6chargrp", "0");
+      const result = await invoke(helper, "xreadgroup", {
+        payload: ["GROUP", "v6chargrp", "cons1", "COUNT", "10", "STREAMS", key, ">"],
+      });
+      result.should.be.an.Array();
+      result.length.should.equal(1);
+      result[0][0].should.equal(key);
+      result[0][1][0][1].should.eql(["f1", "v1"]);
+    }
+  );
 
   SORTED_SET_PAIR_CASES.forEach((c) => {
-    it(`${c.command} keeps the legacy flat [member, score, ...] array`, async function () {
-      const key = "test:v6char:zset:" + c.id;
-      await c.setup(probe, key);
-      const result = await invoke(helper, c.id, { payload: c.args(key) });
-      assertFlatPairsContain(result, c.expected, approximatelyEqualScore);
-    });
+    it(
+      `${c.command} keeps the legacy flat [member, score, ...] array`,
+      { timeout: 8000 },
+      async function () {
+        const key = "test:v6char:zset:" + c.id;
+        await c.setup(probe, key);
+        const result = await invoke(helper, c.id, { payload: c.args(key) });
+        assertFlatPairsContain(result, c.expected, approximatelyEqualScore);
+      }
+    );
   });
 });

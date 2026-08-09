@@ -4,9 +4,11 @@ const net = require("net");
 const assert = require("assert");
 const { spawnSync } = require("child_process");
 const path = require("path");
+const { describe, it } = require("node:test");
 
 const HELPER = path.join(__dirname, "helpers", "deployment.js");
 const DEFAULT_BAD_PORT = 6399;
+const TIMEOUT = 5000;
 
 function loadHelperInChild(env) {
   const script =
@@ -43,29 +45,31 @@ function listenOrAcceptOccupied(port) {
   });
 }
 
-describe("deployment helper unreachable-host port", function () {
-  this.timeout(5000);
-
-  it("fails loudly when an explicit REDIS_BAD_PORT is reachable", async function () {
-    const server = net.createServer();
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const port = server.address().port;
-    try {
-      const result = loadHelperInChild({
-        REDIS_BAD_PORT: String(port),
-        REDIS_BAD_HOST: "127.0.0.1",
-      });
-      assert.notStrictEqual(result.status, 0, "helper load must fail");
-      assert.match(
-        String(result.stderr || "") + String(result.stdout || ""),
-        /REDIS_BAD_PORT=.*is reachable/
-      );
-    } finally {
-      await new Promise((resolve) => server.close(resolve));
+describe("deployment helper unreachable-host port", () => {
+  it(
+    "fails loudly when an explicit REDIS_BAD_PORT is reachable",
+    { timeout: TIMEOUT },
+    async () => {
+      const server = net.createServer();
+      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const port = server.address().port;
+      try {
+        const result = loadHelperInChild({
+          REDIS_BAD_PORT: String(port),
+          REDIS_BAD_HOST: "127.0.0.1",
+        });
+        assert.notStrictEqual(result.status, 0, "helper load must fail");
+        assert.match(
+          String(result.stderr || "") + String(result.stdout || ""),
+          /REDIS_BAD_PORT=.*is reachable/
+        );
+      } finally {
+        await new Promise((resolve) => server.close(resolve));
+      }
     }
-  });
+  );
 
-  it("auto-picks a free port when the default 6399 is occupied", async function () {
+  it("auto-picks a free port when the default 6399 is occupied", { timeout: TIMEOUT }, async () => {
     const { server, owned } = await listenOrAcceptOccupied(DEFAULT_BAD_PORT);
     try {
       const result = loadHelperInChild({

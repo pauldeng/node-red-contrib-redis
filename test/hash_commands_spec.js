@@ -1,4 +1,5 @@
 const helper = require("node-red-node-test-helper");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const redisNode = require("../redis.js");
 const { isCommandSupported } = require("./helpers/capability");
 const { cleanupKeys } = require("./helpers/cleanup");
@@ -7,16 +8,14 @@ const { commandNode, expectError, helperNode, invoke, load } = require("./helper
 
 helper.init(require.resolve("node-red"));
 
-describe("Hash commands", function () {
-  this.timeout(5000);
-
+describe("Hash commands", () => {
   const configNode = redisConfigNode("config1", "Local");
 
-  beforeEach((done) => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => {
       helper.stopServer(() => {
         cleanupKeys("test:hash:*", done);
@@ -24,7 +23,7 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HSET multiple fields and HGET a single field", function (done) {
+  it("should HSET multiple fields and HGET a single field", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -99,7 +98,7 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HDEL remove fields and HEXISTS check presence", function (done) {
+  it("should HDEL remove fields and HEXISTS check presence", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -191,83 +190,87 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HGETALL return all fields and values as an object", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "hset-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HSET",
-        name: "HSET",
-        topic: "",
-        params: "[]",
-        wires: [["hset-helper"]],
-      },
-      { id: "hset-helper", type: "helper" },
-      {
-        id: "hgetall-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HGETALL",
-        name: "HGETALL",
-        topic: "",
-        params: "[]",
-        wires: [["hgetall-helper"]],
-      },
-      { id: "hgetall-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should HGETALL return all fields and values as an object",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "hset-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HSET",
+          name: "HSET",
+          topic: "",
+          params: "[]",
+          wires: [["hset-helper"]],
+        },
+        { id: "hset-helper", type: "helper" },
+        {
+          id: "hgetall-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HGETALL",
+          name: "HGETALL",
+          topic: "",
+          params: "[]",
+          wires: [["hgetall-helper"]],
+        },
+        { id: "hgetall-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const hsetNode = helper.getNode("hset-node");
-      const hsetHelper = helper.getNode("hset-helper");
-      const hgetallNode = helper.getNode("hgetall-node");
-      const hgetallHelper = helper.getNode("hgetall-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const hsetNode = helper.getNode("hset-node");
+        const hsetHelper = helper.getNode("hset-helper");
+        const hgetallNode = helper.getNode("hgetall-node");
+        const hgetallHelper = helper.getNode("hgetall-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        hgetallHelper.on("input", (msg) => {
+          try {
+            // client.call("HGETALL",...) bypasses ioredis reply transformer (case-sensitive
+            // lookup), so the result is a flat array rather than an object
+            msg.payload.should.be.an.Array();
+            msg.payload.should.containEql("f1");
+            msg.payload.should.containEql("v1");
+            msg.payload.should.containEql("f2");
+            msg.payload.should.containEql("v2");
+            delNode.receive({ topic: "test:hash:hgetall" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        hsetHelper.on("input", () => {
+          hgetallNode.receive({ topic: "test:hash:hgetall" });
+        });
+
+        hsetNode.receive({
+          topic: "test:hash:hgetall",
+          payload: ["f1", "v1", "f2", "v2"],
+        });
       });
+    }
+  );
 
-      hgetallHelper.on("input", (msg) => {
-        try {
-          // client.call("HGETALL",...) bypasses ioredis reply transformer (case-sensitive
-          // lookup), so the result is a flat array rather than an object
-          msg.payload.should.be.an.Array();
-          msg.payload.should.containEql("f1");
-          msg.payload.should.containEql("v1");
-          msg.payload.should.containEql("f2");
-          msg.payload.should.containEql("v2");
-          delNode.receive({ topic: "test:hash:hgetall" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      hsetHelper.on("input", () => {
-        hgetallNode.receive({ topic: "test:hash:hgetall" });
-      });
-
-      hsetNode.receive({
-        topic: "test:hash:hgetall",
-        payload: ["f1", "v1", "f2", "v2"],
-      });
-    });
-  });
-
-  it("should HKEYS and HVALS return field names and values", function (done) {
+  it("should HKEYS and HVALS return field names and values", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -363,7 +366,7 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HMGET return values for specified fields", function (done) {
+  it("should HMGET return values for specified fields", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -436,7 +439,7 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HLEN return number of fields in a hash", function (done) {
+  it("should HLEN return number of fields in a hash", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -506,7 +509,7 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HINCRBY increment a hash field by integer", function (done) {
+  it("should HINCRBY increment a hash field by integer", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -579,7 +582,7 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HINCRBYFLOAT increment a hash field by float", function (done) {
+  it("should HINCRBYFLOAT increment a hash field by float", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -652,7 +655,7 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HSETNX set field only when it does not exist", function (done) {
+  it("should HSETNX set field only when it does not exist", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -750,7 +753,7 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HRANDFIELD return one or more random fields", function (done) {
+  it("should HRANDFIELD return one or more random fields", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -820,397 +823,413 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HSTRLEN return the string length of a hash field value", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "hset-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HSET",
-        name: "HSET",
-        topic: "",
-        params: "[]",
-        wires: [["hset-helper"]],
-      },
-      { id: "hset-helper", type: "helper" },
-      {
-        id: "hstrlen-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HSTRLEN",
-        name: "HSTRLEN",
-        topic: "",
-        params: "[]",
-        wires: [["hstrlen-helper"]],
-      },
-      { id: "hstrlen-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should HSTRLEN return the string length of a hash field value",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "hset-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HSET",
+          name: "HSET",
+          topic: "",
+          params: "[]",
+          wires: [["hset-helper"]],
+        },
+        { id: "hset-helper", type: "helper" },
+        {
+          id: "hstrlen-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HSTRLEN",
+          name: "HSTRLEN",
+          topic: "",
+          params: "[]",
+          wires: [["hstrlen-helper"]],
+        },
+        { id: "hstrlen-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const hsetNode = helper.getNode("hset-node");
-      const hsetHelper = helper.getNode("hset-helper");
-      const hstrlenNode = helper.getNode("hstrlen-node");
-      const hstrlenHelper = helper.getNode("hstrlen-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const hsetNode = helper.getNode("hset-node");
+        const hsetHelper = helper.getNode("hset-helper");
+        const hstrlenNode = helper.getNode("hstrlen-node");
+        const hstrlenHelper = helper.getNode("hstrlen-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        hstrlenHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(5);
+            delNode.receive({ topic: "test:hash:hstrlen" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        hsetHelper.on("input", () => {
+          hstrlenNode.receive({ topic: "test:hash:hstrlen", payload: "f1" });
+        });
+
+        hsetNode.receive({
+          topic: "test:hash:hstrlen",
+          payload: ["f1", "hello"],
+        });
       });
+    }
+  );
 
-      hstrlenHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(5);
-          delNode.receive({ topic: "test:hash:hstrlen" });
-        } catch (err) {
-          done(err);
-        }
-      });
+  it(
+    "should HEXPIRE set field expiry and HTTL return remaining seconds",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "hset-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HSET",
+          name: "HSET",
+          topic: "",
+          params: "[]",
+          wires: [["hset-helper"]],
+        },
+        { id: "hset-helper", type: "helper" },
+        {
+          id: "hexpire-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HEXPIRE",
+          name: "HEXPIRE",
+          topic: "",
+          params: "[]",
+          wires: [["hexpire-helper"]],
+        },
+        { id: "hexpire-helper", type: "helper" },
+        {
+          id: "httl-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HTTL",
+          name: "HTTL",
+          topic: "",
+          params: "[]",
+          wires: [["httl-helper"]],
+        },
+        { id: "httl-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-      hsetHelper.on("input", () => {
-        hstrlenNode.receive({ topic: "test:hash:hstrlen", payload: "f1" });
-      });
+      helper.load(redisNode, flow, () => {
+        const hsetNode = helper.getNode("hset-node");
+        const hsetHelper = helper.getNode("hset-helper");
+        const hexpireNode = helper.getNode("hexpire-node");
+        const hexpireHelper = helper.getNode("hexpire-helper");
+        const httlNode = helper.getNode("httl-node");
+        const httlHelper = helper.getNode("httl-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      hsetNode.receive({
-        topic: "test:hash:hstrlen",
-        payload: ["f1", "hello"],
-      });
-    });
-  });
+        delHelper.on("input", () => {
+          done();
+        });
 
-  it("should HEXPIRE set field expiry and HTTL return remaining seconds", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "hset-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HSET",
-        name: "HSET",
-        topic: "",
-        params: "[]",
-        wires: [["hset-helper"]],
-      },
-      { id: "hset-helper", type: "helper" },
-      {
-        id: "hexpire-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HEXPIRE",
-        name: "HEXPIRE",
-        topic: "",
-        params: "[]",
-        wires: [["hexpire-helper"]],
-      },
-      { id: "hexpire-helper", type: "helper" },
-      {
-        id: "httl-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HTTL",
-        name: "HTTL",
-        topic: "",
-        params: "[]",
-        wires: [["httl-helper"]],
-      },
-      { id: "httl-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+        httlHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.be.above(0);
+            delNode.receive({ topic: "test:hash:hexpire" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-    helper.load(redisNode, flow, () => {
-      const hsetNode = helper.getNode("hset-node");
-      const hsetHelper = helper.getNode("hset-helper");
-      const hexpireNode = helper.getNode("hexpire-node");
-      const hexpireHelper = helper.getNode("hexpire-helper");
-      const httlNode = helper.getNode("httl-node");
-      const httlHelper = helper.getNode("httl-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+        hexpireHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal(1);
+            httlNode.receive({
+              topic: "test:hash:hexpire",
+              payload: ["FIELDS", "1", "f1"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      delHelper.on("input", () => {
-        done();
-      });
-
-      httlHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.be.above(0);
-          delNode.receive({ topic: "test:hash:hexpire" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      hexpireHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal(1);
-          httlNode.receive({
+        hsetHelper.on("input", () => {
+          hexpireNode.receive({
             topic: "test:hash:hexpire",
-            payload: ["FIELDS", "1", "f1"],
+            payload: ["100", "FIELDS", "1", "f1"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      hsetHelper.on("input", () => {
-        hexpireNode.receive({
+        hsetNode.receive({
           topic: "test:hash:hexpire",
-          payload: ["100", "FIELDS", "1", "f1"],
+          payload: ["f1", "v1"],
         });
       });
+    }
+  );
 
-      hsetNode.receive({
-        topic: "test:hash:hexpire",
-        payload: ["f1", "v1"],
-      });
-    });
-  });
+  it(
+    "should HPEXPIRE set field ms expiry and HPTTL return remaining ms",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "hset-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HSET",
+          name: "HSET",
+          topic: "",
+          params: "[]",
+          wires: [["hset-helper"]],
+        },
+        { id: "hset-helper", type: "helper" },
+        {
+          id: "hpexpire-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HPEXPIRE",
+          name: "HPEXPIRE",
+          topic: "",
+          params: "[]",
+          wires: [["hpexpire-helper"]],
+        },
+        { id: "hpexpire-helper", type: "helper" },
+        {
+          id: "hpttl-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HPTTL",
+          name: "HPTTL",
+          topic: "",
+          params: "[]",
+          wires: [["hpttl-helper"]],
+        },
+        { id: "hpttl-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-  it("should HPEXPIRE set field ms expiry and HPTTL return remaining ms", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "hset-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HSET",
-        name: "HSET",
-        topic: "",
-        params: "[]",
-        wires: [["hset-helper"]],
-      },
-      { id: "hset-helper", type: "helper" },
-      {
-        id: "hpexpire-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HPEXPIRE",
-        name: "HPEXPIRE",
-        topic: "",
-        params: "[]",
-        wires: [["hpexpire-helper"]],
-      },
-      { id: "hpexpire-helper", type: "helper" },
-      {
-        id: "hpttl-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HPTTL",
-        name: "HPTTL",
-        topic: "",
-        params: "[]",
-        wires: [["hpttl-helper"]],
-      },
-      { id: "hpttl-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+      helper.load(redisNode, flow, () => {
+        const hsetNode = helper.getNode("hset-node");
+        const hsetHelper = helper.getNode("hset-helper");
+        const hpexpireNode = helper.getNode("hpexpire-node");
+        const hpexpireHelper = helper.getNode("hpexpire-helper");
+        const hpttlNode = helper.getNode("hpttl-node");
+        const hpttlHelper = helper.getNode("hpttl-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-    helper.load(redisNode, flow, () => {
-      const hsetNode = helper.getNode("hset-node");
-      const hsetHelper = helper.getNode("hset-helper");
-      const hpexpireNode = helper.getNode("hpexpire-node");
-      const hpexpireHelper = helper.getNode("hpexpire-helper");
-      const hpttlNode = helper.getNode("hpttl-node");
-      const hpttlHelper = helper.getNode("hpttl-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+        delHelper.on("input", () => {
+          done();
+        });
 
-      delHelper.on("input", () => {
-        done();
-      });
+        hpttlHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.be.above(0);
+            delNode.receive({ topic: "test:hash:hpexpire" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      hpttlHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.be.above(0);
-          delNode.receive({ topic: "test:hash:hpexpire" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        hpexpireHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal(1);
+            hpttlNode.receive({
+              topic: "test:hash:hpexpire",
+              payload: ["FIELDS", "1", "f1"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      hpexpireHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal(1);
-          hpttlNode.receive({
+        hsetHelper.on("input", () => {
+          hpexpireNode.receive({
             topic: "test:hash:hpexpire",
-            payload: ["FIELDS", "1", "f1"],
+            payload: ["100000", "FIELDS", "1", "f1"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      hsetHelper.on("input", () => {
-        hpexpireNode.receive({
+        hsetNode.receive({
           topic: "test:hash:hpexpire",
-          payload: ["100000", "FIELDS", "1", "f1"],
+          payload: ["f1", "v1"],
         });
       });
+    }
+  );
 
-      hsetNode.receive({
-        topic: "test:hash:hpexpire",
-        payload: ["f1", "v1"],
-      });
-    });
-  });
+  it(
+    "should HPERSIST remove field expiry and HTTL return -1",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "hset-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HSET",
+          name: "HSET",
+          topic: "",
+          params: "[]",
+          wires: [["hset-helper"]],
+        },
+        { id: "hset-helper", type: "helper" },
+        {
+          id: "hexpire-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HEXPIRE",
+          name: "HEXPIRE",
+          topic: "",
+          params: "[]",
+          wires: [["hexpire-helper"]],
+        },
+        { id: "hexpire-helper", type: "helper" },
+        {
+          id: "hpersist-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HPERSIST",
+          name: "HPERSIST",
+          topic: "",
+          params: "[]",
+          wires: [["hpersist-helper"]],
+        },
+        { id: "hpersist-helper", type: "helper" },
+        {
+          id: "httl-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HTTL",
+          name: "HTTL",
+          topic: "",
+          params: "[]",
+          wires: [["httl-helper"]],
+        },
+        { id: "httl-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-  it("should HPERSIST remove field expiry and HTTL return -1", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "hset-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HSET",
-        name: "HSET",
-        topic: "",
-        params: "[]",
-        wires: [["hset-helper"]],
-      },
-      { id: "hset-helper", type: "helper" },
-      {
-        id: "hexpire-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HEXPIRE",
-        name: "HEXPIRE",
-        topic: "",
-        params: "[]",
-        wires: [["hexpire-helper"]],
-      },
-      { id: "hexpire-helper", type: "helper" },
-      {
-        id: "hpersist-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HPERSIST",
-        name: "HPERSIST",
-        topic: "",
-        params: "[]",
-        wires: [["hpersist-helper"]],
-      },
-      { id: "hpersist-helper", type: "helper" },
-      {
-        id: "httl-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HTTL",
-        name: "HTTL",
-        topic: "",
-        params: "[]",
-        wires: [["httl-helper"]],
-      },
-      { id: "httl-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+      helper.load(redisNode, flow, () => {
+        const hsetNode = helper.getNode("hset-node");
+        const hsetHelper = helper.getNode("hset-helper");
+        const hexpireNode = helper.getNode("hexpire-node");
+        const hexpireHelper = helper.getNode("hexpire-helper");
+        const hpersistNode = helper.getNode("hpersist-node");
+        const hpersistHelper = helper.getNode("hpersist-helper");
+        const httlNode = helper.getNode("httl-node");
+        const httlHelper = helper.getNode("httl-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-    helper.load(redisNode, flow, () => {
-      const hsetNode = helper.getNode("hset-node");
-      const hsetHelper = helper.getNode("hset-helper");
-      const hexpireNode = helper.getNode("hexpire-node");
-      const hexpireHelper = helper.getNode("hexpire-helper");
-      const hpersistNode = helper.getNode("hpersist-node");
-      const hpersistHelper = helper.getNode("hpersist-helper");
-      const httlNode = helper.getNode("httl-node");
-      const httlHelper = helper.getNode("httl-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+        delHelper.on("input", () => {
+          done();
+        });
 
-      delHelper.on("input", () => {
-        done();
-      });
+        httlHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal(-1);
+            delNode.receive({ topic: "test:hash:hpersist" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      httlHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal(-1);
-          delNode.receive({ topic: "test:hash:hpersist" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        hpersistHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload[0].should.equal(1);
+            httlNode.receive({
+              topic: "test:hash:hpersist",
+              payload: ["FIELDS", "1", "f1"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      hpersistHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload[0].should.equal(1);
-          httlNode.receive({
+        hexpireHelper.on("input", () => {
+          hpersistNode.receive({
             topic: "test:hash:hpersist",
             payload: ["FIELDS", "1", "f1"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
+        });
 
-      hexpireHelper.on("input", () => {
-        hpersistNode.receive({
+        hsetHelper.on("input", () => {
+          hexpireNode.receive({
+            topic: "test:hash:hpersist",
+            payload: ["100", "FIELDS", "1", "f1"],
+          });
+        });
+
+        hsetNode.receive({
           topic: "test:hash:hpersist",
-          payload: ["FIELDS", "1", "f1"],
+          payload: ["f1", "v1"],
         });
       });
+    }
+  );
 
-      hsetHelper.on("input", () => {
-        hexpireNode.receive({
-          topic: "test:hash:hpersist",
-          payload: ["100", "FIELDS", "1", "f1"],
-        });
-      });
-
-      hsetNode.receive({
-        topic: "test:hash:hpersist",
-        payload: ["f1", "v1"],
-      });
-    });
-  });
-
-  it("should HGETDEL return field values and delete them", function (done) {
+  it("should HGETDEL return field values and delete them", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1306,156 +1325,164 @@ describe("Hash commands", function () {
     });
   });
 
-  it("should HGETEX return field values with PERSIST option", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "hset-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HSET",
-        name: "HSET",
-        topic: "",
-        params: "[]",
-        wires: [["hset-helper"]],
-      },
-      { id: "hset-helper", type: "helper" },
-      {
-        id: "hgetex-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HGETEX",
-        name: "HGETEX",
-        topic: "",
-        params: "[]",
-        wires: [["hgetex-helper"]],
-      },
-      { id: "hgetex-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should HGETEX return field values with PERSIST option",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "hset-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HSET",
+          name: "HSET",
+          topic: "",
+          params: "[]",
+          wires: [["hset-helper"]],
+        },
+        { id: "hset-helper", type: "helper" },
+        {
+          id: "hgetex-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HGETEX",
+          name: "HGETEX",
+          topic: "",
+          params: "[]",
+          wires: [["hgetex-helper"]],
+        },
+        { id: "hgetex-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const hsetNode = helper.getNode("hset-node");
-      const hsetHelper = helper.getNode("hset-helper");
-      const hgetexNode = helper.getNode("hgetex-node");
-      const hgetexHelper = helper.getNode("hgetex-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const hsetNode = helper.getNode("hset-node");
+        const hsetHelper = helper.getNode("hset-helper");
+        const hgetexNode = helper.getNode("hgetex-node");
+        const hgetexHelper = helper.getNode("hgetex-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      hgetexHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload.should.eql(["v1"]);
-          delNode.receive({ topic: "test:hash:hgetex" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        hgetexHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload.should.eql(["v1"]);
+            delNode.receive({ topic: "test:hash:hgetex" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      hsetHelper.on("input", () => {
-        hgetexNode.receive({
+        hsetHelper.on("input", () => {
+          hgetexNode.receive({
+            topic: "test:hash:hgetex",
+            payload: ["PERSIST", "FIELDS", "1", "f1"],
+          });
+        });
+
+        hsetNode.receive({
           topic: "test:hash:hgetex",
-          payload: ["PERSIST", "FIELDS", "1", "f1"],
+          payload: ["f1", "v1"],
         });
       });
+    }
+  );
 
-      hsetNode.receive({
-        topic: "test:hash:hgetex",
-        payload: ["f1", "v1"],
+  it(
+    "should HSETEX set fields with expiry and HGET retrieve them",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "hsetex-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HSETEX",
+          name: "HSETEX",
+          topic: "",
+          params: "[]",
+          wires: [["hsetex-helper"]],
+        },
+        { id: "hsetex-helper", type: "helper" },
+        {
+          id: "hget-node",
+          type: "redis-command",
+          server: "config1",
+          command: "HGET",
+          name: "HGET",
+          topic: "",
+          params: "[]",
+          wires: [["hget-helper"]],
+        },
+        { id: "hget-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
+
+      helper.load(redisNode, flow, () => {
+        const hsetexNode = helper.getNode("hsetex-node");
+        const hsetexHelper = helper.getNode("hsetex-helper");
+        const hgetNode = helper.getNode("hget-node");
+        const hgetHelper = helper.getNode("hget-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
+
+        delHelper.on("input", () => {
+          done();
+        });
+
+        hgetHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("v1");
+            delNode.receive({ topic: "test:hash:hsetex" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        hsetexHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(1);
+            hgetNode.receive({ topic: "test:hash:hsetex", payload: "f1" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        hsetexNode.receive({
+          topic: "test:hash:hsetex",
+          payload: ["EX", "10", "FIELDS", "1", "f1", "v1"],
+        });
       });
-    });
-  });
+    }
+  );
 
-  it("should HSETEX set fields with expiry and HGET retrieve them", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "hsetex-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HSETEX",
-        name: "HSETEX",
-        topic: "",
-        params: "[]",
-        wires: [["hsetex-helper"]],
-      },
-      { id: "hsetex-helper", type: "helper" },
-      {
-        id: "hget-node",
-        type: "redis-command",
-        server: "config1",
-        command: "HGET",
-        name: "HGET",
-        topic: "",
-        params: "[]",
-        wires: [["hget-helper"]],
-      },
-      { id: "hget-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
-
-    helper.load(redisNode, flow, () => {
-      const hsetexNode = helper.getNode("hsetex-node");
-      const hsetexHelper = helper.getNode("hsetex-helper");
-      const hgetNode = helper.getNode("hget-node");
-      const hgetHelper = helper.getNode("hget-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
-
-      delHelper.on("input", () => {
-        done();
-      });
-
-      hgetHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("v1");
-          delNode.receive({ topic: "test:hash:hsetex" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      hsetexHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(1);
-          hgetNode.receive({ topic: "test:hash:hsetex", payload: "f1" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      hsetexNode.receive({
-        topic: "test:hash:hsetex",
-        payload: ["EX", "10", "FIELDS", "1", "f1", "v1"],
-      });
-    });
-  });
-
-  it("should HSCAN iterate over hash fields and values", function (done) {
+  it("should HSCAN iterate over hash fields and values", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1531,81 +1558,99 @@ describe("Hash commands", function () {
   // hashes from it (SET). The fieldset lives on the connection that prepared it, so PREPARE
   // and SET must share a connection — both nodes below are non-block, so they pool onto the
   // same client for this config (see docs/ARCHITECTURE.md's connection-id table).
-  it("HIMPORT PREPARE/SET builds a hash from a fieldset, preserving the flat-array HGETALL contract and binary-safe values", async function () {
-    if (!(await isCommandSupported("HIMPORT"))) {
-      this.skip();
+  it(
+    "HIMPORT PREPARE/SET builds a hash from a fieldset, preserving the flat-array HGETALL contract and binary-safe values",
+    { timeout: 5000 },
+    async function (t) {
+      if (!(await isCommandSupported("HIMPORT"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("prepare", "HIMPORT"),
+        helperNode("prepare"),
+        commandNode("set", "HIMPORT"),
+        helperNode("set"),
+        commandNode("hgetall", "HGETALL"),
+        helperNode("hgetall"),
+      ]);
+
+      await invoke(helper, "prepare", {
+        payload: ["PREPARE", "test:hash:himport:fs", "f1", "f2", "f3"],
+      });
+
+      const binaryValue = Buffer.from([0, 1, 2, 255]);
+      await invoke(helper, "set", {
+        payload: ["SET", "test:hash:himport", "test:hash:himport:fs", "v1", "v2", binaryValue],
+      });
+
+      const flat = await invoke(helper, "hgetall", {
+        topic: "test:hash:himport",
+        payload: [],
+      });
+      flat.should.eql(["f1", "v1", "f2", "v2", "f3", binaryValue.toString()]);
+
+      const client = directRedis();
+      try {
+        const rawValue = await client.callBuffer("HGET", "test:hash:himport", "f3");
+        rawValue.should.eql(binaryValue);
+      } finally {
+        await client.call("DEL", "test:hash:himport");
+        client.disconnect();
+      }
     }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("prepare", "HIMPORT"),
-      helperNode("prepare"),
-      commandNode("set", "HIMPORT"),
-      helperNode("set"),
-      commandNode("hgetall", "HGETALL"),
-      helperNode("hgetall"),
-    ]);
+  );
 
-    await invoke(helper, "prepare", {
-      payload: ["PREPARE", "test:hash:himport:fs", "f1", "f2", "f3"],
-    });
+  it(
+    "HIMPORT SET fails once its fieldset has been discarded",
+    { timeout: 5000 },
+    async function (t) {
+      if (!(await isCommandSupported("HIMPORT"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("prepare", "HIMPORT"),
+        helperNode("prepare"),
+        commandNode("discard", "HIMPORT"),
+        helperNode("discard"),
+        commandNode("set", "HIMPORT"),
+        helperNode("set"),
+      ]);
 
-    const binaryValue = Buffer.from([0, 1, 2, 255]);
-    await invoke(helper, "set", {
-      payload: ["SET", "test:hash:himport", "test:hash:himport:fs", "v1", "v2", binaryValue],
-    });
+      await invoke(helper, "prepare", { payload: ["PREPARE", "test:hash:himport:fs2", "f1"] });
+      await invoke(helper, "discard", { payload: ["DISCARD", "test:hash:himport:fs2"] });
 
-    const flat = await invoke(helper, "hgetall", {
-      topic: "test:hash:himport",
-      payload: [],
-    });
-    flat.should.eql(["f1", "v1", "f2", "v2", "f3", binaryValue.toString()]);
-
-    const client = directRedis();
-    try {
-      const rawValue = await client.callBuffer("HGET", "test:hash:himport", "f3");
-      rawValue.should.eql(binaryValue);
-    } finally {
-      await client.call("DEL", "test:hash:himport");
-      client.disconnect();
+      const err = await expectError(helper, "set", {
+        payload: ["SET", "test:hash:himport2", "test:hash:himport:fs2", "v1"],
+      });
+      String(err).should.match(/no such fieldset/i);
     }
-  });
+  );
 
-  it("HIMPORT SET fails once its fieldset has been discarded", async function () {
-    if (!(await isCommandSupported("HIMPORT"))) {
-      this.skip();
+  it(
+    "HMSET keeps accepting an object payload on an ordinary hash",
+    { timeout: 5000 },
+    async function () {
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("hmset", "HMSET"),
+        helperNode("hmset"),
+      ]);
+
+      await invoke(helper, "hmset", {
+        topic: "test:hash:hmset:ordinary",
+        payload: { f1: "v1", f2: "v2" },
+      });
+
+      const client = directRedis();
+      try {
+        (await client.hmget("test:hash:hmset:ordinary", "f1", "f2")).should.eql(["v1", "v2"]);
+      } finally {
+        client.disconnect();
+      }
     }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("prepare", "HIMPORT"),
-      helperNode("prepare"),
-      commandNode("discard", "HIMPORT"),
-      helperNode("discard"),
-      commandNode("set", "HIMPORT"),
-      helperNode("set"),
-    ]);
-
-    await invoke(helper, "prepare", { payload: ["PREPARE", "test:hash:himport:fs2", "f1"] });
-    await invoke(helper, "discard", { payload: ["DISCARD", "test:hash:himport:fs2"] });
-
-    const err = await expectError(helper, "set", {
-      payload: ["SET", "test:hash:himport2", "test:hash:himport:fs2", "v1"],
-    });
-    String(err).should.match(/no such fieldset/i);
-  });
-
-  it("HMSET keeps accepting an object payload on an ordinary hash", async function () {
-    await load(helper, redisNode, [configNode, commandNode("hmset", "HMSET"), helperNode("hmset")]);
-
-    await invoke(helper, "hmset", {
-      topic: "test:hash:hmset:ordinary",
-      payload: { f1: "v1", f2: "v2" },
-    });
-
-    const client = directRedis();
-    try {
-      (await client.hmget("test:hash:hmset:ordinary", "f1", "f2")).should.eql(["v1", "v2"]);
-    } finally {
-      client.disconnect();
-    }
-  });
+  );
 });

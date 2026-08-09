@@ -68,7 +68,7 @@ npm test
 ```
 
 `npm test` manages the Docker deployment matrix itself. Run a targeted spec first with
-`npm run test:mocha -- <spec>` only when you have already started a compatible Redis
+`npm run test:node -- <spec>` only when you have already started a compatible Redis
 deployment yourself. Husky also runs `npm test` on pre-commit, so a failing deployment
 matrix or unavailable Docker will block your commit.
 

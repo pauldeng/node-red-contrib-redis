@@ -1,3 +1,4 @@
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { isCommandSupported } = require("./helpers/capability");
@@ -7,16 +8,14 @@ const { commandNode, helperNode, invoke, load } = require("./helpers/topology");
 
 helper.init(require.resolve("node-red"));
 
-describe("Server commands", function () {
-  this.timeout(10000);
-
+describe("Server commands", () => {
   const configNode = redisConfigNode("config1", "Local");
 
-  beforeEach((done) => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => {
       helper.stopServer(() => {
         cleanupKeys("test:srv:*", done);
@@ -24,7 +23,7 @@ describe("Server commands", function () {
     });
   });
 
-  it("should PING return PONG", function (done) {
+  it("should PING return PONG", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -57,7 +56,7 @@ describe("Server commands", function () {
     });
   });
 
-  it("should PING echo back a custom message", function (done) {
+  it("should PING echo back a custom message", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -90,7 +89,7 @@ describe("Server commands", function () {
     });
   });
 
-  it("should DBSIZE return a non-negative integer", function (done) {
+  it("should DBSIZE return a non-negative integer", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -124,7 +123,7 @@ describe("Server commands", function () {
     });
   });
 
-  it("should TIME return unix timestamp and microseconds", function (done) {
+  it("should TIME return unix timestamp and microseconds", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -159,7 +158,7 @@ describe("Server commands", function () {
     });
   });
 
-  it("should INFO return server information string", function (done) {
+  it("should INFO return server information string", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -193,41 +192,45 @@ describe("Server commands", function () {
     });
   });
 
-  it("should COMMAND COUNT return total number of Redis commands", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "command-node",
-        type: "redis-command",
-        server: "config1",
-        command: "COMMAND",
-        name: "COMMAND",
-        topic: "",
-        params: "[]",
-        wires: [["command-helper"]],
-      },
-      { id: "command-helper", type: "helper" },
-    ];
+  it(
+    "should COMMAND COUNT return total number of Redis commands",
+    { timeout: 10000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "command-node",
+          type: "redis-command",
+          server: "config1",
+          command: "COMMAND",
+          name: "COMMAND",
+          topic: "",
+          params: "[]",
+          wires: [["command-helper"]],
+        },
+        { id: "command-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const commandNode = helper.getNode("command-node");
-      const commandHelper = helper.getNode("command-helper");
+      helper.load(redisNode, flow, () => {
+        const commandNode = helper.getNode("command-node");
+        const commandHelper = helper.getNode("command-helper");
 
-      commandHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.a.Number();
-          msg.payload.should.be.above(0);
-          done();
-        } catch (err) {
-          done(err);
-        }
+        commandHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.a.Number();
+            msg.payload.should.be.above(0);
+            done();
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        commandNode.receive({ payload: "COUNT" });
       });
+    }
+  );
 
-      commandNode.receive({ payload: "COUNT" });
-    });
-  });
-
-  it("should CLIENT ID return the current connection ID", function (done) {
+  it("should CLIENT ID return the current connection ID", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -261,7 +264,7 @@ describe("Server commands", function () {
     });
   });
 
-  it("should CONFIG GET return configuration value", function (done) {
+  it("should CONFIG GET return configuration value", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -295,109 +298,117 @@ describe("Server commands", function () {
     });
   });
 
-  it("should LASTSAVE return the unix timestamp of last save", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "lastsave-node",
-        type: "redis-command",
-        server: "config1",
-        command: "LASTSAVE",
-        name: "LASTSAVE",
-        topic: "",
-        params: "[]",
-        wires: [["lastsave-helper"]],
-      },
-      { id: "lastsave-helper", type: "helper" },
-    ];
+  it(
+    "should LASTSAVE return the unix timestamp of last save",
+    { timeout: 10000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "lastsave-node",
+          type: "redis-command",
+          server: "config1",
+          command: "LASTSAVE",
+          name: "LASTSAVE",
+          topic: "",
+          params: "[]",
+          wires: [["lastsave-helper"]],
+        },
+        { id: "lastsave-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const lastsaveNode = helper.getNode("lastsave-node");
-      const lastsaveHelper = helper.getNode("lastsave-helper");
+      helper.load(redisNode, flow, () => {
+        const lastsaveNode = helper.getNode("lastsave-node");
+        const lastsaveHelper = helper.getNode("lastsave-helper");
 
-      lastsaveHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.a.Number();
-          msg.payload.should.be.above(0);
+        lastsaveHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.a.Number();
+            msg.payload.should.be.above(0);
+            done();
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        lastsaveNode.receive({});
+      });
+    }
+  );
+
+  it(
+    "should MEMORY USAGE return memory bytes used by a key",
+    { timeout: 10000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "set-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET",
+          topic: "",
+          params: "[]",
+          wires: [["set-helper"]],
+        },
+        { id: "set-helper", type: "helper" },
+        {
+          id: "memory-node",
+          type: "redis-command",
+          server: "config1",
+          command: "MEMORY",
+          name: "MEMORY",
+          topic: "",
+          params: "[]",
+          wires: [["memory-helper"]],
+        },
+        { id: "memory-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
+
+      helper.load(redisNode, flow, () => {
+        const setNode = helper.getNode("set-node");
+        const setHelper = helper.getNode("set-helper");
+        const memoryNode = helper.getNode("memory-node");
+        const memoryHelper = helper.getNode("memory-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
+
+        delHelper.on("input", () => {
           done();
-        } catch (err) {
-          done(err);
-        }
+        });
+
+        memoryHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.a.Number();
+            msg.payload.should.be.above(0);
+            delNode.receive({ topic: "test:srv:memkey" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setHelper.on("input", () => {
+          memoryNode.receive({ topic: "USAGE", payload: "test:srv:memkey" });
+        });
+
+        setNode.receive({ topic: "test:srv:memkey", payload: "helloworld" });
       });
+    }
+  );
 
-      lastsaveNode.receive({});
-    });
-  });
-
-  it("should MEMORY USAGE return memory bytes used by a key", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "set-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET",
-        topic: "",
-        params: "[]",
-        wires: [["set-helper"]],
-      },
-      { id: "set-helper", type: "helper" },
-      {
-        id: "memory-node",
-        type: "redis-command",
-        server: "config1",
-        command: "MEMORY",
-        name: "MEMORY",
-        topic: "",
-        params: "[]",
-        wires: [["memory-helper"]],
-      },
-      { id: "memory-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
-
-    helper.load(redisNode, flow, () => {
-      const setNode = helper.getNode("set-node");
-      const setHelper = helper.getNode("set-helper");
-      const memoryNode = helper.getNode("memory-node");
-      const memoryHelper = helper.getNode("memory-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
-
-      delHelper.on("input", () => {
-        done();
-      });
-
-      memoryHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.a.Number();
-          msg.payload.should.be.above(0);
-          delNode.receive({ topic: "test:srv:memkey" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setHelper.on("input", () => {
-        memoryNode.receive({ topic: "USAGE", payload: "test:srv:memkey" });
-      });
-
-      setNode.receive({ topic: "test:srv:memkey", payload: "helloworld" });
-    });
-  });
-
-  it("should OBJECT ENCODING return the encoding of a key", function (done) {
+  it("should OBJECT ENCODING return the encoding of a key", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -467,149 +478,157 @@ describe("Server commands", function () {
     });
   });
 
-  it("should OBJECT IDLETIME return idle seconds since last access", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "set-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET",
-        topic: "",
-        params: "[]",
-        wires: [["set-helper"]],
-      },
-      { id: "set-helper", type: "helper" },
-      {
-        id: "object-node",
-        type: "redis-command",
-        server: "config1",
-        command: "OBJECT",
-        name: "OBJECT",
-        topic: "",
-        params: "[]",
-        wires: [["object-helper"]],
-      },
-      { id: "object-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should OBJECT IDLETIME return idle seconds since last access",
+    { timeout: 10000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "set-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET",
+          topic: "",
+          params: "[]",
+          wires: [["set-helper"]],
+        },
+        { id: "set-helper", type: "helper" },
+        {
+          id: "object-node",
+          type: "redis-command",
+          server: "config1",
+          command: "OBJECT",
+          name: "OBJECT",
+          topic: "",
+          params: "[]",
+          wires: [["object-helper"]],
+        },
+        { id: "object-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const setNode = helper.getNode("set-node");
-      const setHelper = helper.getNode("set-helper");
-      const objectNode = helper.getNode("object-node");
-      const objectHelper = helper.getNode("object-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const setNode = helper.getNode("set-node");
+        const setHelper = helper.getNode("set-helper");
+        const objectNode = helper.getNode("object-node");
+        const objectHelper = helper.getNode("object-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
-
-      objectHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.a.Number();
-          msg.payload.should.be.aboveOrEqual(0);
-          delNode.receive({ topic: "test:srv:idlekey" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setHelper.on("input", () => {
-        objectNode.receive({
-          topic: "IDLETIME",
-          payload: "test:srv:idlekey",
+        delHelper.on("input", () => {
+          done();
         });
-      });
 
-      setNode.receive({ topic: "test:srv:idlekey", payload: "helloworld" });
-    });
-  });
-
-  it("should OBJECT REFCOUNT return reference count of a key", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "set-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET",
-        topic: "",
-        params: "[]",
-        wires: [["set-helper"]],
-      },
-      { id: "set-helper", type: "helper" },
-      {
-        id: "object-node",
-        type: "redis-command",
-        server: "config1",
-        command: "OBJECT",
-        name: "OBJECT",
-        topic: "",
-        params: "[]",
-        wires: [["object-helper"]],
-      },
-      { id: "object-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
-
-    helper.load(redisNode, flow, () => {
-      const setNode = helper.getNode("set-node");
-      const setHelper = helper.getNode("set-helper");
-      const objectNode = helper.getNode("object-node");
-      const objectHelper = helper.getNode("object-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
-
-      delHelper.on("input", () => {
-        done();
-      });
-
-      objectHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.a.Number();
-          msg.payload.should.be.aboveOrEqual(1);
-          delNode.receive({ topic: "test:srv:refkey" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setHelper.on("input", () => {
-        objectNode.receive({
-          topic: "REFCOUNT",
-          payload: "test:srv:refkey",
+        objectHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.a.Number();
+            msg.payload.should.be.aboveOrEqual(0);
+            delNode.receive({ topic: "test:srv:idlekey" });
+          } catch (err) {
+            done(err);
+          }
         });
+
+        setHelper.on("input", () => {
+          objectNode.receive({
+            topic: "IDLETIME",
+            payload: "test:srv:idlekey",
+          });
+        });
+
+        setNode.receive({ topic: "test:srv:idlekey", payload: "helloworld" });
       });
+    }
+  );
 
-      setNode.receive({ topic: "test:srv:refkey", payload: "helloworld" });
-    });
-  });
+  it(
+    "should OBJECT REFCOUNT return reference count of a key",
+    { timeout: 10000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "set-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET",
+          topic: "",
+          params: "[]",
+          wires: [["set-helper"]],
+        },
+        { id: "set-helper", type: "helper" },
+        {
+          id: "object-node",
+          type: "redis-command",
+          server: "config1",
+          command: "OBJECT",
+          name: "OBJECT",
+          topic: "",
+          params: "[]",
+          wires: [["object-helper"]],
+        },
+        { id: "object-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-  it("should ACL WHOAMI return the current username", function (done) {
+      helper.load(redisNode, flow, () => {
+        const setNode = helper.getNode("set-node");
+        const setHelper = helper.getNode("set-helper");
+        const objectNode = helper.getNode("object-node");
+        const objectHelper = helper.getNode("object-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
+
+        delHelper.on("input", () => {
+          done();
+        });
+
+        objectHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.a.Number();
+            msg.payload.should.be.aboveOrEqual(1);
+            delNode.receive({ topic: "test:srv:refkey" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setHelper.on("input", () => {
+          objectNode.receive({
+            topic: "REFCOUNT",
+            payload: "test:srv:refkey",
+          });
+        });
+
+        setNode.receive({ topic: "test:srv:refkey", payload: "helloworld" });
+      });
+    }
+  );
+
+  it("should ACL WHOAMI return the current username", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -642,7 +661,7 @@ describe("Server commands", function () {
     });
   });
 
-  it("should SLOWLOG GET return the slow log entries array", async function () {
+  it("should SLOWLOG GET return the slow log entries array", { timeout: 10000 }, async function () {
     await load(helper, redisNode, [
       configNode,
       commandNode("slowlog", "SLOWLOG"),
@@ -657,111 +676,126 @@ describe("Server commands", function () {
   // argument count (distinct from the arguments array, which Redis itself may truncate for
   // very long commands). This is a server-native reply change -- pass it through unchanged,
   // add nothing to normalize or drop it.
-  it("SLOWLOG GET entries include Redis 8.10's added total-argument-count field", async function () {
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("slowlog", "SLOWLOG"),
-      helperNode("slowlog"),
-    ]);
+  it(
+    "SLOWLOG GET entries include Redis 8.10's added total-argument-count field",
+    { timeout: 10000 },
+    async function (t) {
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("slowlog", "SLOWLOG"),
+        helperNode("slowlog"),
+      ]);
 
-    const client = directRedis();
-    let originalThreshold;
-    try {
-      originalThreshold = (await client.call("CONFIG", "GET", "slowlog-log-slower-than"))[1];
-      await client.call("CONFIG", "SET", "slowlog-log-slower-than", "0");
-      await client.call("SLOWLOG", "RESET");
-      const commandArgs = Array.from({ length: 40 }, (_, i) => `test:server:slowlog:${i}`);
-      await client.call("MGET", ...commandArgs);
+      const client = directRedis();
+      let originalThreshold;
+      try {
+        originalThreshold = (await client.call("CONFIG", "GET", "slowlog-log-slower-than"))[1];
+        await client.call("CONFIG", "SET", "slowlog-log-slower-than", "0");
+        await client.call("SLOWLOG", "RESET");
+        const commandArgs = Array.from({ length: 40 }, (_, i) => `test:server:slowlog:${i}`);
+        await client.call("MGET", ...commandArgs);
 
-      const entries = await invoke(helper, "slowlog", { payload: ["GET", "1"] });
-      entries.should.be.an.Array();
-      entries.length.should.equal(1);
-      const entry = entries[0];
-      entry.should.be.an.Array();
-      if (entry.length !== 7) {
-        // Pre-8.10 Redis and Valkey both still report the 6-element SLOWLOG GET entry.
-        this.skip();
+        const entries = await invoke(helper, "slowlog", { payload: ["GET", "1"] });
+        entries.should.be.an.Array();
+        entries.length.should.equal(1);
+        const entry = entries[0];
+        entry.should.be.an.Array();
+        if (entry.length !== 7) {
+          // Pre-8.10 Redis and Valkey both still report the 6-element SLOWLOG GET entry.
+          t.skip();
+          return;
+        }
+        const [, , , args, , , totalArgCount] = entry;
+        args.length.should.equal(32);
+        args[0].should.equal("MGET");
+        args[args.length - 1].should.match(/more arguments/);
+        totalArgCount.should.equal(commandArgs.length + 1);
+      } finally {
+        await client.call("CONFIG", "SET", "slowlog-log-slower-than", originalThreshold);
+        client.disconnect();
       }
-      const [, , , args, , , totalArgCount] = entry;
-      args.length.should.equal(32);
-      args[0].should.equal("MGET");
-      args[args.length - 1].should.match(/more arguments/);
-      totalArgCount.should.equal(commandArgs.length + 1);
-    } finally {
-      await client.call("CONFIG", "SET", "slowlog-log-slower-than", originalThreshold);
-      client.disconnect();
     }
-  });
+  );
 
   // Compact hashes (Redis 8.10): the server's own hash encoding stays an implementation
   // detail -- this only confirms the generic redis-command pass-through surfaces the new
   // metrics unchanged, and that MEMORY USAGE still works normally on a compact hash built
   // via HIMPORT. No compact-hash toggle or model is added on our side.
-  it("passes through the new compact-hash metrics in INFO STATS, INFO MEMORY, and MEMORY STATS", async function () {
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("infostats", "INFO"),
-      helperNode("infostats"),
-      commandNode("infomemory", "INFO"),
-      helperNode("infomemory"),
-      commandNode("memorystats", "MEMORY"),
-      helperNode("memorystats"),
-    ]);
+  it(
+    "passes through the new compact-hash metrics in INFO STATS, INFO MEMORY, and MEMORY STATS",
+    { timeout: 10000 },
+    async function (t) {
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("infostats", "INFO"),
+        helperNode("infostats"),
+        commandNode("infomemory", "INFO"),
+        helperNode("infomemory"),
+        commandNode("memorystats", "MEMORY"),
+        helperNode("memorystats"),
+      ]);
 
-    const stats = await invoke(helper, "infostats", { payload: "stats" });
-    stats.should.be.a.String();
-    if (!stats.includes("hash_templates")) {
-      // Compact hashes are a Redis 8.10-only feature; Valkey's INFO STATS has no such field.
-      this.skip();
+      const stats = await invoke(helper, "infostats", { payload: "stats" });
+      stats.should.be.a.String();
+      if (!stats.includes("hash_templates")) {
+        // Compact hashes are a Redis 8.10-only feature; Valkey's INFO STATS has no such field.
+        t.skip();
+        return;
+      }
+      stats.should.containEql("hash_templates");
+      stats.should.containEql("hash_template_keys");
+
+      const memory = await invoke(helper, "infomemory", { payload: "memory" });
+      memory.should.be.a.String();
+      memory.should.containEql("used_memory_hash_templates");
+
+      const memStats = await invoke(helper, "memorystats", { payload: "STATS" });
+      memStats.should.be.an.Array();
+      memStats.should.containEql("hash.templates");
     }
-    stats.should.containEql("hash_templates");
-    stats.should.containEql("hash_template_keys");
+  );
 
-    const memory = await invoke(helper, "infomemory", { payload: "memory" });
-    memory.should.be.a.String();
-    memory.should.containEql("used_memory_hash_templates");
+  it(
+    "MEMORY USAGE reports bytes for a compact hash the same way as an ordinary one",
+    { timeout: 10000 },
+    async function (t) {
+      if (!(await isCommandSupported("HIMPORT"))) {
+        t.skip();
+        return;
+      }
+      await load(helper, redisNode, [
+        configNode,
+        commandNode("himportPrepare", "HIMPORT"),
+        helperNode("himportPrepare"),
+        commandNode("himportSet", "HIMPORT"),
+        helperNode("himportSet"),
+        commandNode("memoryUsage", "MEMORY"),
+        helperNode("memoryUsage"),
+      ]);
 
-    const memStats = await invoke(helper, "memorystats", { payload: "STATS" });
-    memStats.should.be.an.Array();
-    memStats.should.containEql("hash.templates");
-  });
+      await invoke(helper, "himportPrepare", {
+        payload: ["PREPARE", "test:server:compacthash:fs", "f1", "f2"],
+      });
+      await invoke(helper, "himportSet", {
+        payload: ["SET", "test:server:compacthash", "test:server:compacthash:fs", "v1", "v2"],
+      });
 
-  it("MEMORY USAGE reports bytes for a compact hash the same way as an ordinary one", async function () {
-    if (!(await isCommandSupported("HIMPORT"))) {
-      this.skip();
+      const usage = await invoke(helper, "memoryUsage", {
+        payload: ["USAGE", "test:server:compacthash"],
+      });
+      usage.should.be.a.Number();
+      usage.should.be.above(0);
+
+      const client = directRedis();
+      try {
+        await client.call("DEL", "test:server:compacthash");
+      } finally {
+        client.disconnect();
+      }
     }
-    await load(helper, redisNode, [
-      configNode,
-      commandNode("himportPrepare", "HIMPORT"),
-      helperNode("himportPrepare"),
-      commandNode("himportSet", "HIMPORT"),
-      helperNode("himportSet"),
-      commandNode("memoryUsage", "MEMORY"),
-      helperNode("memoryUsage"),
-    ]);
+  );
 
-    await invoke(helper, "himportPrepare", {
-      payload: ["PREPARE", "test:server:compacthash:fs", "f1", "f2"],
-    });
-    await invoke(helper, "himportSet", {
-      payload: ["SET", "test:server:compacthash", "test:server:compacthash:fs", "v1", "v2"],
-    });
-
-    const usage = await invoke(helper, "memoryUsage", {
-      payload: ["USAGE", "test:server:compacthash"],
-    });
-    usage.should.be.a.Number();
-    usage.should.be.above(0);
-
-    const client = directRedis();
-    try {
-      await client.call("DEL", "test:server:compacthash");
-    } finally {
-      client.disconnect();
-    }
-  });
-
-  it("should LOLWUT return the Redis art string", function (done) {
+  it("should LOLWUT return the Redis art string", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -795,7 +829,7 @@ describe("Server commands", function () {
     });
   });
 
-  it("should ECHO return the same string that was sent", function (done) {
+  it("should ECHO return the same string that was sent", { timeout: 10000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -828,171 +862,191 @@ describe("Server commands", function () {
     });
   });
 
-  it("should PUBLISH send a message to a channel and return subscriber count", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "publish-node",
-        type: "redis-command",
-        server: "config1",
-        command: "PUBLISH",
-        name: "PUBLISH",
-        topic: "",
-        params: "[]",
-        wires: [["publish-helper"]],
-      },
-      { id: "publish-helper", type: "helper" },
-    ];
+  it(
+    "should PUBLISH send a message to a channel and return subscriber count",
+    { timeout: 10000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "publish-node",
+          type: "redis-command",
+          server: "config1",
+          command: "PUBLISH",
+          name: "PUBLISH",
+          topic: "",
+          params: "[]",
+          wires: [["publish-helper"]],
+        },
+        { id: "publish-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const publishNode = helper.getNode("publish-node");
-      const publishHelper = helper.getNode("publish-helper");
+      helper.load(redisNode, flow, () => {
+        const publishNode = helper.getNode("publish-node");
+        const publishHelper = helper.getNode("publish-helper");
 
-      publishHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.a.Number();
-          done();
-        } catch (err) {
-          done(err);
-        }
+        publishHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.a.Number();
+            done();
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        publishNode.receive({
+          topic: "test:srv:channel",
+          payload: "hello",
+        });
       });
+    }
+  );
 
-      publishNode.receive({
-        topic: "test:srv:channel",
-        payload: "hello",
+  it(
+    "should PUBSUB CHANNELS return an array of active channel names",
+    { timeout: 10000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "pubsub-node",
+          type: "redis-command",
+          server: "config1",
+          command: "PUBSUB",
+          name: "PUBSUB",
+          topic: "",
+          params: "[]",
+          wires: [["pubsub-helper"]],
+        },
+        { id: "pubsub-helper", type: "helper" },
+      ];
+
+      helper.load(redisNode, flow, () => {
+        const pubsubNode = helper.getNode("pubsub-node");
+        const pubsubHelper = helper.getNode("pubsub-helper");
+
+        pubsubHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            done();
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        pubsubNode.receive({ payload: ["CHANNELS", "*"] });
       });
-    });
-  });
+    }
+  );
 
-  it("should PUBSUB CHANNELS return an array of active channel names", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "pubsub-node",
-        type: "redis-command",
-        server: "config1",
-        command: "PUBSUB",
-        name: "PUBSUB",
-        topic: "",
-        params: "[]",
-        wires: [["pubsub-helper"]],
-      },
-      { id: "pubsub-helper", type: "helper" },
-    ];
+  it(
+    "should BGREWRITEAOF trigger AOF rewrite and return a string response",
+    { timeout: 10000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "bgrewriteaof-node",
+          type: "redis-command",
+          server: "config1",
+          command: "BGREWRITEAOF",
+          name: "BGREWRITEAOF",
+          topic: "",
+          params: "[]",
+          wires: [["bgrewriteaof-helper"]],
+        },
+        { id: "bgrewriteaof-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const pubsubNode = helper.getNode("pubsub-node");
-      const pubsubHelper = helper.getNode("pubsub-helper");
+      helper.load(redisNode, flow, () => {
+        const bgrewriteaofNode = helper.getNode("bgrewriteaof-node");
+        const bgrewriteaofHelper = helper.getNode("bgrewriteaof-helper");
 
-      pubsubHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          done();
-        } catch (err) {
-          done(err);
-        }
+        bgrewriteaofHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.a.String();
+            done();
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        bgrewriteaofNode.receive({});
       });
+    }
+  );
 
-      pubsubNode.receive({ payload: ["CHANNELS", "*"] });
-    });
-  });
+  it(
+    "should BGSAVE or SAVE perform a background or synchronous save",
+    { timeout: 10000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "save-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SAVE",
+          name: "SAVE",
+          topic: "",
+          params: "[]",
+          wires: [["save-helper"]],
+        },
+        { id: "save-helper", type: "helper" },
+      ];
 
-  it("should BGREWRITEAOF trigger AOF rewrite and return a string response", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "bgrewriteaof-node",
-        type: "redis-command",
-        server: "config1",
-        command: "BGREWRITEAOF",
-        name: "BGREWRITEAOF",
-        topic: "",
-        params: "[]",
-        wires: [["bgrewriteaof-helper"]],
-      },
-      { id: "bgrewriteaof-helper", type: "helper" },
-    ];
+      helper.load(redisNode, flow, () => {
+        const saveNode = helper.getNode("save-node");
+        const saveHelper = helper.getNode("save-helper");
 
-    helper.load(redisNode, flow, () => {
-      const bgrewriteaofNode = helper.getNode("bgrewriteaof-node");
-      const bgrewriteaofHelper = helper.getNode("bgrewriteaof-helper");
+        saveHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("OK");
+            done();
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      bgrewriteaofHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.a.String();
-          done();
-        } catch (err) {
-          done(err);
-        }
+        saveNode.receive({});
       });
+    }
+  );
 
-      bgrewriteaofNode.receive({});
-    });
-  });
+  it(
+    "should WAIT return number of replicas that acknowledged",
+    { timeout: 10000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "wait-node",
+          type: "redis-command",
+          server: "config1",
+          command: "WAIT",
+          name: "WAIT",
+          topic: "",
+          params: "[]",
+          wires: [["wait-helper"]],
+        },
+        { id: "wait-helper", type: "helper" },
+      ];
 
-  it("should BGSAVE or SAVE perform a background or synchronous save", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "save-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SAVE",
-        name: "SAVE",
-        topic: "",
-        params: "[]",
-        wires: [["save-helper"]],
-      },
-      { id: "save-helper", type: "helper" },
-    ];
+      helper.load(redisNode, flow, () => {
+        const waitNode = helper.getNode("wait-node");
+        const waitHelper = helper.getNode("wait-helper");
 
-    helper.load(redisNode, flow, () => {
-      const saveNode = helper.getNode("save-node");
-      const saveHelper = helper.getNode("save-helper");
+        waitHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.a.Number();
+            done();
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      saveHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("OK");
-          done();
-        } catch (err) {
-          done(err);
-        }
+        waitNode.receive({ payload: ["0", "0"] });
       });
-
-      saveNode.receive({});
-    });
-  });
-
-  it("should WAIT return number of replicas that acknowledged", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "wait-node",
-        type: "redis-command",
-        server: "config1",
-        command: "WAIT",
-        name: "WAIT",
-        topic: "",
-        params: "[]",
-        wires: [["wait-helper"]],
-      },
-      { id: "wait-helper", type: "helper" },
-    ];
-
-    helper.load(redisNode, flow, () => {
-      const waitNode = helper.getNode("wait-node");
-      const waitHelper = helper.getNode("wait-helper");
-
-      waitHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.a.Number();
-          done();
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      waitNode.receive({ payload: ["0", "0"] });
-    });
-  });
+    }
+  );
 });

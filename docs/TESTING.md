@@ -1,10 +1,10 @@
 # Testing
 
-This repository uses Mocha with `node-red-node-test-helper` for runtime coverage and
-Playwright for real Node-RED editor coverage. `npm test` manages Redis and Valkey
-deployments with Docker so the Mocha suite can verify unauthenticated standalone,
-authenticated standalone, Cluster, Sentinel, a Unix-socket-only deployment, and optional
-AWS MemoryDB behavior, against both engines.
+This repository uses Node's built-in test runner (`node:test`) with
+`node-red-node-test-helper` for runtime coverage and Playwright for real Node-RED editor
+coverage. `npm test` manages Redis and Valkey deployments with Docker so the suite can
+verify unauthenticated standalone, authenticated standalone, Cluster, Sentinel, a
+Unix-socket-only deployment, and optional AWS MemoryDB behavior, against both engines.
 
 ## Prerequisite
 
@@ -37,9 +37,9 @@ not fail on a specific version.
 
 The runner executes these deployments sequentially:
 
-- `single-noauth`: Redis image on `127.0.0.1:6379`; standalone Mocha specs.
+- `single-noauth`: Redis image on `127.0.0.1:6379`; standalone specs.
 - `single-auth`: Redis image on `127.0.0.1:6379` with ACL username/password; the same
-  standalone Mocha specs as `single-noauth`, run again under authentication. This is
+  standalone specs as `single-noauth`, run again under authentication. This is
   deliberately redundant with `single-noauth`: it protects against connection-keying and
   credential-merge regressions that only manifest when a config carries auth options, across
   the entire command surface, not just the auth-specific specs.
@@ -85,22 +85,25 @@ library-save metadata, `redis-in` command field visibility, and `redis-command` 
 initialization. MemoryDB editor coverage is skipped unless all `MEMORYDB_*` variables are
 set.
 
-The raw Mocha command is still available for targeted iteration when you have already
-started a compatible Redis yourself:
+The raw `node --test` command is still available for targeted iteration when you have
+already started a compatible Redis yourself:
 
 ```bash
-npm run test:mocha -- test/redis_in_spec.js
+npm run test:node -- test/redis_in_spec.js
 ```
 
-To run the raw full Mocha glob against a Redis you started yourself:
+To run the raw full spec glob against a Redis you started yourself:
 
 ```bash
-npm run test:mocha:all
+npm run test:node:all
 ```
 
-The raw full glob includes topology specs outside their matching deployment, so Mocha may
-report them as pending. `npm test` excludes those topology specs from standalone runs and
-executes them only in their own deployment stage.
+`test:node:all` passes `--test-concurrency=1` so spec files run one at a time — they share
+one live Redis/Valkey server and mutate global server state (`CONFIG SET`, ACL users,
+`SLOWLOG`), which races under `node:test`'s default concurrent-file execution. The raw full
+glob includes topology specs outside their matching deployment, so those report as skipped
+(gated by `REDIS_DEPLOYMENT`) rather than pending. `npm test` excludes those topology specs
+from standalone runs and executes them only in their own deployment stage.
 
 Standalone specs read connection details from:
 
@@ -291,25 +294,21 @@ The invariant that matters does not change between refreshes:
 - Full `npm audit` reports findings that are **all** reachable only through
   `devDependencies` used to build, run, or format the repository itself — never through the
   published package. Confirm this with `npm ls <package> --all`: every entry should resolve
-  under `node-red` (editor/runtime/admin tooling) or `mocha` (reporter dependencies).
+  under `node-red` (editor/runtime/admin tooling, including its bundled `npm`).
 
 Counts drift as advisories are published, so treat the numbers below as a dated observation
-rather than an expected value. As of **2026-07-26**, with `node-red@5.0.1`,
-`playwright@1.61.1`, `prettier@3.9.5`, `lint-staged@17.1.0`, `ioredis@5.11.1`, and
-`mocha@11.7.6` installed:
+rather than an expected value. As of **2026-08-08**, with `node-red@5.0.4`,
+`playwright@1.62.1`, `prettier@3.9.6`, `lint-staged@17.3.0`, and `ioredis@6.0.0` installed
+(the `node:test` migration removed the `mocha` devDependency entirely):
 
 - `npm audit --omit=dev` → **0 vulnerabilities**.
-- Full `npm audit` → **17 development-tree vulnerabilities** (3 low, 4 moderate, 10 high).
-  - Via `node-red`: `axios`, `body-parser`, `fast-uri`, `jsonata`, `tar`, `npm`,
-    `node-red-admin`, and the `@node-red/*` packages that depend on them
-    (`@node-red/util`, `@node-red/runtime`, `@node-red/registry`, `@node-red/editor-api`,
-    `@node-red/nodes`).
-  - Via `mocha`: `diff`, `serialize-javascript`, `brace-expansion`. `mocha` itself is
-    flagged only because of those.
+- Full `npm audit` → **13 development-tree vulnerabilities** (3 moderate, 10 high), all via
+  `node-red`: `js-yaml`, `jsonata`, `tar`, `undici`, `brace-expansion`, `ip-address`, and the
+  `@node-red/*`/`npm` packages that depend on them.
 
-`node-red@5.0.1` and `mocha@11.7.6` are each already the latest release on npm, so no
-non-breaking upgrade currently resolves these — `npm audit`'s suggested fixes are
-**downgrades** to much older releases (for example `mocha@11.3.0`) and must not be applied.
+`node-red@5.0.4` is already the latest release on npm, so no non-breaking upgrade currently
+resolves these — `npm audit`'s suggested fixes require `--force` and downgrade `node-red`
+to a much older release (for example `node-red@2.2.3`) and must not be applied.
 Re-check for a newer non-major release before every dependency refresh.
 Do not allowlist these findings by severity or by dependency name in tooling config — this
 note is the record of why they are currently unresolved, not a suppression.

@@ -29,7 +29,7 @@ Top-level implementation:
 - `../redis.js`
 - `../redis.html`
 
-Tests (Mocha spec files). Run the Docker-managed matrix with `npm test`; do not
+Tests (`node:test` spec files). Run the Docker-managed matrix with `npm test`; do not
 rely on this list staying exhaustive — confirm with `ls test/*_spec.js`.
 
 Node behavior and lifecycle:

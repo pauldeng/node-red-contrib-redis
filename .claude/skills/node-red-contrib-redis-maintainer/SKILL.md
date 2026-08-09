@@ -38,7 +38,7 @@ Core files:
 - `redis.js`
 - `redis.html`
 
-Mocha tests (`ls test/*_spec.js` for the live list — do not rely on a hard-coded count):
+`node:test` specs (`ls test/*_spec.js` for the live list — do not rely on a hard-coded count):
 
 - node behavior/lifecycle: `test/redis_in_spec.js`, `test/redis_out_spec.js`,
   `test/redis_command_spec.js`, `test/redis_status_spec.js`,
@@ -203,7 +203,7 @@ Be careful with:
 
 Assume `npm test` owns Redis through Docker. It starts one deployment at a time,
 runs the matching test subset, and tears the deployment down with volumes before
-continuing. The raw Mocha command is for targeted iteration only, when you have
+continuing. The raw `node --test` command is for targeted iteration only, when you have
 already started a compatible Redis yourself.
 
 Primary command:
@@ -215,7 +215,7 @@ npm test
 Run a single spec while iterating:
 
 ```bash
-npm run test:mocha -- test/redis_in_spec.js
+npm run test:node -- test/redis_in_spec.js
 ```
 
 ## Environment boundary

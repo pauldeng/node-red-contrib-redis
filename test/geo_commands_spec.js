@@ -1,20 +1,19 @@
 const helper = require("node-red-node-test-helper");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
 const { redisConfigNode } = require("./helpers/deployment");
 
 helper.init(require.resolve("node-red"));
 
-describe("Geo commands", function () {
-  this.timeout(5000);
-
+describe("Geo commands", () => {
   const configNode = redisConfigNode("config1", "Local");
 
-  beforeEach((done) => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => {
       helper.stopServer(() => {
         cleanupKeys("test:geo:*", done);
@@ -22,7 +21,7 @@ describe("Geo commands", function () {
     });
   });
 
-  it("should GEOADD members and GEODIST between them", function (done) {
+  it("should GEOADD members and GEODIST between them", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -101,7 +100,7 @@ describe("Geo commands", function () {
     });
   });
 
-  it("should GEOHASH return base32 encoded hashes", function (done) {
+  it("should GEOHASH return base32 encoded hashes", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -177,7 +176,7 @@ describe("Geo commands", function () {
     });
   });
 
-  it("should GEOPOS return longitude and latitude", function (done) {
+  it("should GEOPOS return longitude and latitude", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -253,7 +252,7 @@ describe("Geo commands", function () {
     });
   });
 
-  it("should GEOSEARCH members within radius", function (done) {
+  it("should GEOSEARCH members within radius", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -328,7 +327,7 @@ describe("Geo commands", function () {
     });
   });
 
-  it("should GEOSEARCHSTORE results into a sorted set", function (done) {
+  it("should GEOSEARCHSTORE results into a sorted set", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -404,150 +403,158 @@ describe("Geo commands", function () {
     });
   });
 
-  it("should GEORADIUS return members within radius (deprecated command)", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "geoadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "GEOADD",
-        name: "GEOADD",
-        topic: "",
-        params: "[]",
-        wires: [["geoadd-helper"]],
-      },
-      { id: "geoadd-helper", type: "helper" },
-      {
-        id: "georadius-node",
-        type: "redis-command",
-        server: "config1",
-        command: "GEORADIUS",
-        name: "GEORADIUS",
-        topic: "",
-        params: "[]",
-        wires: [["georadius-helper"]],
-      },
-      { id: "georadius-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should GEORADIUS return members within radius (deprecated command)",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "geoadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "GEOADD",
+          name: "GEOADD",
+          topic: "",
+          params: "[]",
+          wires: [["geoadd-helper"]],
+        },
+        { id: "geoadd-helper", type: "helper" },
+        {
+          id: "georadius-node",
+          type: "redis-command",
+          server: "config1",
+          command: "GEORADIUS",
+          name: "GEORADIUS",
+          topic: "",
+          params: "[]",
+          wires: [["georadius-helper"]],
+        },
+        { id: "georadius-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const geoaddNode = helper.getNode("geoadd-node");
-      const geoaddHelper = helper.getNode("geoadd-helper");
-      const georadiusNode = helper.getNode("georadius-node");
-      const georadiusHelper = helper.getNode("georadius-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const geoaddNode = helper.getNode("geoadd-node");
+        const geoaddHelper = helper.getNode("geoadd-helper");
+        const georadiusNode = helper.getNode("georadius-node");
+        const georadiusHelper = helper.getNode("georadius-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      georadiusHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          delNode.receive({ topic: "test:geo:radiuskey" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        georadiusHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            delNode.receive({ topic: "test:geo:radiuskey" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      geoaddHelper.on("input", () => {
-        georadiusNode.receive({
+        geoaddHelper.on("input", () => {
+          georadiusNode.receive({
+            topic: "test:geo:radiuskey",
+            payload: ["15.0", "37.0", "200", "km"],
+          });
+        });
+
+        geoaddNode.receive({
           topic: "test:geo:radiuskey",
-          payload: ["15.0", "37.0", "200", "km"],
+          payload: ["13.361389", "38.115556", "Palermo", "15.087269", "37.502669", "Catania"],
         });
       });
+    }
+  );
 
-      geoaddNode.receive({
-        topic: "test:geo:radiuskey",
-        payload: ["13.361389", "38.115556", "Palermo", "15.087269", "37.502669", "Catania"],
-      });
-    });
-  });
+  it(
+    "should GEORADIUSBYMEMBER return members within radius (deprecated command)",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "geoadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "GEOADD",
+          name: "GEOADD",
+          topic: "",
+          params: "[]",
+          wires: [["geoadd-helper"]],
+        },
+        { id: "geoadd-helper", type: "helper" },
+        {
+          id: "georadiusbymember-node",
+          type: "redis-command",
+          server: "config1",
+          command: "GEORADIUSBYMEMBER",
+          name: "GEORADIUSBYMEMBER",
+          topic: "",
+          params: "[]",
+          wires: [["georadiusbymember-helper"]],
+        },
+        { id: "georadiusbymember-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-  it("should GEORADIUSBYMEMBER return members within radius (deprecated command)", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "geoadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "GEOADD",
-        name: "GEOADD",
-        topic: "",
-        params: "[]",
-        wires: [["geoadd-helper"]],
-      },
-      { id: "geoadd-helper", type: "helper" },
-      {
-        id: "georadiusbymember-node",
-        type: "redis-command",
-        server: "config1",
-        command: "GEORADIUSBYMEMBER",
-        name: "GEORADIUSBYMEMBER",
-        topic: "",
-        params: "[]",
-        wires: [["georadiusbymember-helper"]],
-      },
-      { id: "georadiusbymember-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+      helper.load(redisNode, flow, () => {
+        const geoaddNode = helper.getNode("geoadd-node");
+        const geoaddHelper = helper.getNode("geoadd-helper");
+        const georadiusbymemberNode = helper.getNode("georadiusbymember-node");
+        const georadiusbymemberHelper = helper.getNode("georadiusbymember-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-    helper.load(redisNode, flow, () => {
-      const geoaddNode = helper.getNode("geoadd-node");
-      const geoaddHelper = helper.getNode("geoadd-helper");
-      const georadiusbymemberNode = helper.getNode("georadiusbymember-node");
-      const georadiusbymemberHelper = helper.getNode("georadiusbymember-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+        delHelper.on("input", () => {
+          done();
+        });
 
-      delHelper.on("input", () => {
-        done();
-      });
+        georadiusbymemberHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload.should.containEql("Catania");
+            delNode.receive({ topic: "test:geo:membkey" });
+          } catch (err) {
+            done(err);
+          }
+        });
 
-      georadiusbymemberHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload.should.containEql("Catania");
-          delNode.receive({ topic: "test:geo:membkey" });
-        } catch (err) {
-          done(err);
-        }
-      });
+        geoaddHelper.on("input", () => {
+          georadiusbymemberNode.receive({
+            topic: "test:geo:membkey",
+            payload: ["Palermo", "200", "km"],
+          });
+        });
 
-      geoaddHelper.on("input", () => {
-        georadiusbymemberNode.receive({
+        geoaddNode.receive({
           topic: "test:geo:membkey",
-          payload: ["Palermo", "200", "km"],
+          payload: ["13.361389", "38.115556", "Palermo", "15.087269", "37.502669", "Catania"],
         });
       });
-
-      geoaddNode.receive({
-        topic: "test:geo:membkey",
-        payload: ["13.361389", "38.115556", "Palermo", "15.087269", "37.502669", "Catania"],
-      });
-    });
-  });
+    }
+  );
 });

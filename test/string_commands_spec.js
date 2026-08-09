@@ -1,3 +1,4 @@
+const { afterEach, beforeEach, describe, it } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
@@ -5,16 +6,14 @@ const { redisConfigNode } = require("./helpers/deployment");
 
 helper.init(require.resolve("node-red"));
 
-describe("String commands", function () {
-  this.timeout(5000);
-
+describe("String commands", () => {
   const configNode = redisConfigNode("config1", "Local");
 
-  beforeEach((done) => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => {
       helper.stopServer(() => {
         cleanupKeys("test:str:*", done);
@@ -22,7 +21,7 @@ describe("String commands", function () {
     });
   });
 
-  it("should GETDEL return value and delete key atomically", function (done) {
+  it("should GETDEL return value and delete key atomically", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -72,74 +71,78 @@ describe("String commands", function () {
     });
   });
 
-  it("should GETSET return old value and store new value (deprecated)", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "set-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET",
-        topic: "",
-        params: "[]",
-        wires: [["set-helper"]],
-      },
-      { id: "set-helper", type: "helper" },
-      {
-        id: "getset-node",
-        type: "redis-command",
-        server: "config1",
-        command: "GETSET",
-        name: "GETSET",
-        topic: "",
-        params: "[]",
-        wires: [["getset-helper"]],
-      },
-      { id: "getset-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should GETSET return old value and store new value (deprecated)",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "set-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET",
+          topic: "",
+          params: "[]",
+          wires: [["set-helper"]],
+        },
+        { id: "set-helper", type: "helper" },
+        {
+          id: "getset-node",
+          type: "redis-command",
+          server: "config1",
+          command: "GETSET",
+          name: "GETSET",
+          topic: "",
+          params: "[]",
+          wires: [["getset-helper"]],
+        },
+        { id: "getset-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const setNode = helper.getNode("set-node");
-      const setHelper = helper.getNode("set-helper");
-      const getsetNode = helper.getNode("getset-node");
-      const getsetHelper = helper.getNode("getset-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const setNode = helper.getNode("set-node");
+        const setHelper = helper.getNode("set-helper");
+        const getsetNode = helper.getNode("getset-node");
+        const getsetHelper = helper.getNode("getset-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        getsetHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("world");
+            delNode.receive({ topic: "test:str:getset" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setHelper.on("input", () => {
+          getsetNode.receive({ topic: "test:str:getset", payload: "newworld" });
+        });
+
+        setNode.receive({ topic: "test:str:getset", payload: "world" });
       });
+    }
+  );
 
-      getsetHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("world");
-          delNode.receive({ topic: "test:str:getset" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setHelper.on("input", () => {
-        getsetNode.receive({ topic: "test:str:getset", payload: "newworld" });
-      });
-
-      setNode.receive({ topic: "test:str:getset", payload: "world" });
-    });
-  });
-
-  it("should GETEX return value and set expiry", function (done) {
+  it("should GETEX return value and set expiry", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -231,7 +234,7 @@ describe("String commands", function () {
     });
   });
 
-  it("should GETRANGE return substring of stored string", function (done) {
+  it("should GETRANGE return substring of stored string", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -301,99 +304,103 @@ describe("String commands", function () {
     });
   });
 
-  it("should SETRANGE overwrite part of a string and return new length", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "set-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET",
-        topic: "",
-        params: "[]",
-        wires: [["set-helper"]],
-      },
-      { id: "set-helper", type: "helper" },
-      {
-        id: "setrange-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SETRANGE",
-        name: "SETRANGE",
-        topic: "",
-        params: "[]",
-        wires: [["setrange-helper"]],
-      },
-      { id: "setrange-helper", type: "helper" },
-      {
-        id: "get-node",
-        type: "redis-command",
-        server: "config1",
-        command: "GET",
-        name: "GET",
-        topic: "",
-        params: "[]",
-        wires: [["get-helper"]],
-      },
-      { id: "get-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should SETRANGE overwrite part of a string and return new length",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "set-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET",
+          topic: "",
+          params: "[]",
+          wires: [["set-helper"]],
+        },
+        { id: "set-helper", type: "helper" },
+        {
+          id: "setrange-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SETRANGE",
+          name: "SETRANGE",
+          topic: "",
+          params: "[]",
+          wires: [["setrange-helper"]],
+        },
+        { id: "setrange-helper", type: "helper" },
+        {
+          id: "get-node",
+          type: "redis-command",
+          server: "config1",
+          command: "GET",
+          name: "GET",
+          topic: "",
+          params: "[]",
+          wires: [["get-helper"]],
+        },
+        { id: "get-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const setNode = helper.getNode("set-node");
-      const setHelper = helper.getNode("set-helper");
-      const setrangeNode = helper.getNode("setrange-node");
-      const setrangeHelper = helper.getNode("setrange-helper");
-      const getNode = helper.getNode("get-node");
-      const getHelper = helper.getNode("get-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const setNode = helper.getNode("set-node");
+        const setHelper = helper.getNode("set-helper");
+        const setrangeNode = helper.getNode("setrange-node");
+        const setrangeHelper = helper.getNode("setrange-helper");
+        const getNode = helper.getNode("get-node");
+        const getHelper = helper.getNode("get-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
-
-      getHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("helloWORLD");
-          delNode.receive({ topic: "test:str:setrange" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setrangeHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(10);
-          getNode.receive({ topic: "test:str:setrange" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setHelper.on("input", () => {
-        setrangeNode.receive({
-          topic: "test:str:setrange",
-          payload: ["5", "WORLD"],
+        delHelper.on("input", () => {
+          done();
         });
+
+        getHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("helloWORLD");
+            delNode.receive({ topic: "test:str:setrange" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setrangeHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(10);
+            getNode.receive({ topic: "test:str:setrange" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setHelper.on("input", () => {
+          setrangeNode.receive({
+            topic: "test:str:setrange",
+            payload: ["5", "WORLD"],
+          });
+        });
+
+        setNode.receive({ topic: "test:str:setrange", payload: "helloworld" });
       });
+    }
+  );
 
-      setNode.receive({ topic: "test:str:setrange", payload: "helloworld" });
-    });
-  });
-
-  it("should SETNX set only if key does not exist", function (done) {
+  it("should SETNX set only if key does not exist", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -465,79 +472,83 @@ describe("String commands", function () {
     });
   });
 
-  it("should SETEX set key with TTL and verify with TTL command", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "setex-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SETEX",
-        name: "SETEX",
-        topic: "",
-        params: "[]",
-        wires: [["setex-helper"]],
-      },
-      { id: "setex-helper", type: "helper" },
-      {
-        id: "ttl-node",
-        type: "redis-command",
-        server: "config1",
-        command: "TTL",
-        name: "TTL",
-        topic: "",
-        params: "[]",
-        wires: [["ttl-helper"]],
-      },
-      { id: "ttl-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should SETEX set key with TTL and verify with TTL command",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "setex-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SETEX",
+          name: "SETEX",
+          topic: "",
+          params: "[]",
+          wires: [["setex-helper"]],
+        },
+        { id: "setex-helper", type: "helper" },
+        {
+          id: "ttl-node",
+          type: "redis-command",
+          server: "config1",
+          command: "TTL",
+          name: "TTL",
+          topic: "",
+          params: "[]",
+          wires: [["ttl-helper"]],
+        },
+        { id: "ttl-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const setexNode = helper.getNode("setex-node");
-      const setexHelper = helper.getNode("setex-helper");
-      const ttlNode = helper.getNode("ttl-node");
-      const ttlHelper = helper.getNode("ttl-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const setexNode = helper.getNode("setex-node");
+        const setexHelper = helper.getNode("setex-helper");
+        const ttlNode = helper.getNode("ttl-node");
+        const ttlHelper = helper.getNode("ttl-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        ttlHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.above(0);
+            delNode.receive({ topic: "test:str:setex" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setexHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("OK");
+            ttlNode.receive({ topic: "test:str:setex" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setexNode.receive({ topic: "test:str:setex", payload: ["100", "world"] });
       });
+    }
+  );
 
-      ttlHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.above(0);
-          delNode.receive({ topic: "test:str:setex" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setexHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("OK");
-          ttlNode.receive({ topic: "test:str:setex" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setexNode.receive({ topic: "test:str:setex", payload: ["100", "world"] });
-    });
-  });
-
-  it("should PSETEX set key with millisecond TTL", function (done) {
+  it("should PSETEX set key with millisecond TTL", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -612,7 +623,7 @@ describe("String commands", function () {
     });
   });
 
-  it("should STRLEN return the length of a string value", function (done) {
+  it("should STRLEN return the length of a string value", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -679,96 +690,100 @@ describe("String commands", function () {
     });
   });
 
-  it("should APPEND concatenate to an existing string value", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "set-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET",
-        topic: "",
-        params: "[]",
-        wires: [["set-helper"]],
-      },
-      { id: "set-helper", type: "helper" },
-      {
-        id: "append-node",
-        type: "redis-command",
-        server: "config1",
-        command: "APPEND",
-        name: "APPEND",
-        topic: "",
-        params: "[]",
-        wires: [["append-helper"]],
-      },
-      { id: "append-helper", type: "helper" },
-      {
-        id: "get-node",
-        type: "redis-command",
-        server: "config1",
-        command: "GET",
-        name: "GET",
-        topic: "",
-        params: "[]",
-        wires: [["get-helper"]],
-      },
-      { id: "get-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should APPEND concatenate to an existing string value",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "set-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET",
+          topic: "",
+          params: "[]",
+          wires: [["set-helper"]],
+        },
+        { id: "set-helper", type: "helper" },
+        {
+          id: "append-node",
+          type: "redis-command",
+          server: "config1",
+          command: "APPEND",
+          name: "APPEND",
+          topic: "",
+          params: "[]",
+          wires: [["append-helper"]],
+        },
+        { id: "append-helper", type: "helper" },
+        {
+          id: "get-node",
+          type: "redis-command",
+          server: "config1",
+          command: "GET",
+          name: "GET",
+          topic: "",
+          params: "[]",
+          wires: [["get-helper"]],
+        },
+        { id: "get-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const setNode = helper.getNode("set-node");
-      const setHelper = helper.getNode("set-helper");
-      const appendNode = helper.getNode("append-node");
-      const appendHelper = helper.getNode("append-helper");
-      const getNode = helper.getNode("get-node");
-      const getHelper = helper.getNode("get-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const setNode = helper.getNode("set-node");
+        const setHelper = helper.getNode("set-helper");
+        const appendNode = helper.getNode("append-node");
+        const appendHelper = helper.getNode("append-helper");
+        const getNode = helper.getNode("get-node");
+        const getHelper = helper.getNode("get-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        getHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("hello world");
+            delNode.receive({ topic: "test:str:append" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        appendHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(11);
+            getNode.receive({ topic: "test:str:append" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setHelper.on("input", () => {
+          appendNode.receive({ topic: "test:str:append", payload: " world" });
+        });
+
+        setNode.receive({ topic: "test:str:append", payload: "hello" });
       });
+    }
+  );
 
-      getHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("hello world");
-          delNode.receive({ topic: "test:str:append" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      appendHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(11);
-          getNode.receive({ topic: "test:str:append" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setHelper.on("input", () => {
-        appendNode.receive({ topic: "test:str:append", payload: " world" });
-      });
-
-      setNode.receive({ topic: "test:str:append", payload: "hello" });
-    });
-  });
-
-  it("should INCR increment integer value by one", function (done) {
+  it("should INCR increment integer value by one", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -857,242 +872,254 @@ describe("String commands", function () {
     });
   });
 
-  it("should INCRBY and DECRBY change value by given amount", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "set-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET",
-        topic: "",
-        params: "[]",
-        wires: [["set-helper"]],
-      },
-      { id: "set-helper", type: "helper" },
-      {
-        id: "incrby-node",
-        type: "redis-command",
-        server: "config1",
-        command: "INCRBY",
-        name: "INCRBY",
-        topic: "",
-        params: "[]",
-        wires: [["incrby-helper"]],
-      },
-      { id: "incrby-helper", type: "helper" },
-      {
-        id: "decrby-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DECRBY",
-        name: "DECRBY",
-        topic: "",
-        params: "[]",
-        wires: [["decrby-helper"]],
-      },
-      { id: "decrby-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should INCRBY and DECRBY change value by given amount",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "set-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET",
+          topic: "",
+          params: "[]",
+          wires: [["set-helper"]],
+        },
+        { id: "set-helper", type: "helper" },
+        {
+          id: "incrby-node",
+          type: "redis-command",
+          server: "config1",
+          command: "INCRBY",
+          name: "INCRBY",
+          topic: "",
+          params: "[]",
+          wires: [["incrby-helper"]],
+        },
+        { id: "incrby-helper", type: "helper" },
+        {
+          id: "decrby-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DECRBY",
+          name: "DECRBY",
+          topic: "",
+          params: "[]",
+          wires: [["decrby-helper"]],
+        },
+        { id: "decrby-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const setNode = helper.getNode("set-node");
-      const setHelper = helper.getNode("set-helper");
-      const incrbyNode = helper.getNode("incrby-node");
-      const incrbyHelper = helper.getNode("incrby-helper");
-      const decrbyNode = helper.getNode("decrby-node");
-      const decrbyHelper = helper.getNode("decrby-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const setNode = helper.getNode("set-node");
+        const setHelper = helper.getNode("set-helper");
+        const incrbyNode = helper.getNode("incrby-node");
+        const incrbyHelper = helper.getNode("incrby-helper");
+        const decrbyNode = helper.getNode("decrby-node");
+        const decrbyHelper = helper.getNode("decrby-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        decrbyHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(5);
+            delNode.receive({ topic: "test:str:incrby" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        incrbyHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(8);
+            decrbyNode.receive({ topic: "test:str:incrby", payload: "3" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setHelper.on("input", () => {
+          incrbyNode.receive({ topic: "test:str:incrby", payload: "3" });
+        });
+
+        setNode.receive({ topic: "test:str:incrby", payload: "5" });
       });
+    }
+  );
 
-      decrbyHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(5);
-          delNode.receive({ topic: "test:str:incrby" });
-        } catch (err) {
-          done(err);
-        }
+  it(
+    "should INCRBYFLOAT increment by a floating point value",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "set-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET",
+          topic: "",
+          params: "[]",
+          wires: [["set-helper"]],
+        },
+        { id: "set-helper", type: "helper" },
+        {
+          id: "incrbyfloat-node",
+          type: "redis-command",
+          server: "config1",
+          command: "INCRBYFLOAT",
+          name: "INCRBYFLOAT",
+          topic: "",
+          params: "[]",
+          wires: [["incrbyfloat-helper"]],
+        },
+        { id: "incrbyfloat-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
+
+      helper.load(redisNode, flow, () => {
+        const setNode = helper.getNode("set-node");
+        const setHelper = helper.getNode("set-helper");
+        const incrbyfloatNode = helper.getNode("incrbyfloat-node");
+        const incrbyfloatHelper = helper.getNode("incrbyfloat-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
+
+        delHelper.on("input", () => {
+          done();
+        });
+
+        incrbyfloatHelper.on("input", (msg) => {
+          try {
+            parseFloat(msg.payload).should.be.approximately(3.8, 0.001);
+            delNode.receive({ topic: "test:str:float" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setHelper.on("input", () => {
+          incrbyfloatNode.receive({ topic: "test:str:float", payload: "2.3" });
+        });
+
+        setNode.receive({ topic: "test:str:float", payload: "1.5" });
       });
+    }
+  );
 
-      incrbyHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(8);
-          decrbyNode.receive({ topic: "test:str:incrby", payload: "3" });
-        } catch (err) {
-          done(err);
-        }
+  it(
+    "should MSET store multiple keys and MGET retrieve them",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "mset-node",
+          type: "redis-command",
+          server: "config1",
+          command: "MSET",
+          name: "MSET",
+          topic: "",
+          params: "[]",
+          wires: [["mset-helper"]],
+        },
+        { id: "mset-helper", type: "helper" },
+        {
+          id: "mget-node",
+          type: "redis-command",
+          server: "config1",
+          command: "MGET",
+          name: "MGET",
+          topic: "",
+          params: "[]",
+          wires: [["mget-helper"]],
+        },
+        { id: "mget-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
+
+      helper.load(redisNode, flow, () => {
+        const msetNode = helper.getNode("mset-node");
+        const msetHelper = helper.getNode("mset-helper");
+        const mgetNode = helper.getNode("mget-node");
+        const mgetHelper = helper.getNode("mget-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
+
+        delHelper.on("input", () => {
+          done();
+        });
+
+        mgetHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.an.Array();
+            msg.payload.should.eql(["v1", "v2"]);
+            delNode.receive({
+              payload: ["test:str:mset:k1", "test:str:mset:k2"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        msetHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("OK");
+            mgetNode.receive({
+              payload: ["test:str:mset:k1", "test:str:mset:k2"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        msetNode.receive({
+          payload: ["test:str:mset:k1", "v1", "test:str:mset:k2", "v2"],
+        });
       });
+    }
+  );
 
-      setHelper.on("input", () => {
-        incrbyNode.receive({ topic: "test:str:incrby", payload: "3" });
-      });
-
-      setNode.receive({ topic: "test:str:incrby", payload: "5" });
-    });
-  });
-
-  it("should INCRBYFLOAT increment by a floating point value", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "set-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET",
-        topic: "",
-        params: "[]",
-        wires: [["set-helper"]],
-      },
-      { id: "set-helper", type: "helper" },
-      {
-        id: "incrbyfloat-node",
-        type: "redis-command",
-        server: "config1",
-        command: "INCRBYFLOAT",
-        name: "INCRBYFLOAT",
-        topic: "",
-        params: "[]",
-        wires: [["incrbyfloat-helper"]],
-      },
-      { id: "incrbyfloat-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
-
-    helper.load(redisNode, flow, () => {
-      const setNode = helper.getNode("set-node");
-      const setHelper = helper.getNode("set-helper");
-      const incrbyfloatNode = helper.getNode("incrbyfloat-node");
-      const incrbyfloatHelper = helper.getNode("incrbyfloat-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
-
-      delHelper.on("input", () => {
-        done();
-      });
-
-      incrbyfloatHelper.on("input", (msg) => {
-        try {
-          parseFloat(msg.payload).should.be.approximately(3.8, 0.001);
-          delNode.receive({ topic: "test:str:float" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setHelper.on("input", () => {
-        incrbyfloatNode.receive({ topic: "test:str:float", payload: "2.3" });
-      });
-
-      setNode.receive({ topic: "test:str:float", payload: "1.5" });
-    });
-  });
-
-  it("should MSET store multiple keys and MGET retrieve them", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "mset-node",
-        type: "redis-command",
-        server: "config1",
-        command: "MSET",
-        name: "MSET",
-        topic: "",
-        params: "[]",
-        wires: [["mset-helper"]],
-      },
-      { id: "mset-helper", type: "helper" },
-      {
-        id: "mget-node",
-        type: "redis-command",
-        server: "config1",
-        command: "MGET",
-        name: "MGET",
-        topic: "",
-        params: "[]",
-        wires: [["mget-helper"]],
-      },
-      { id: "mget-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
-
-    helper.load(redisNode, flow, () => {
-      const msetNode = helper.getNode("mset-node");
-      const msetHelper = helper.getNode("mset-helper");
-      const mgetNode = helper.getNode("mget-node");
-      const mgetHelper = helper.getNode("mget-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
-
-      delHelper.on("input", () => {
-        done();
-      });
-
-      mgetHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.an.Array();
-          msg.payload.should.eql(["v1", "v2"]);
-          delNode.receive({
-            payload: ["test:str:mset:k1", "test:str:mset:k2"],
-          });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      msetHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("OK");
-          mgetNode.receive({
-            payload: ["test:str:mset:k1", "test:str:mset:k2"],
-          });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      msetNode.receive({
-        payload: ["test:str:mset:k1", "v1", "test:str:mset:k2", "v2"],
-      });
-    });
-  });
-
-  it("should MSETNX set multiple keys only when none exist", function (done) {
+  it("should MSETNX set multiple keys only when none exist", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
@@ -1146,161 +1173,169 @@ describe("String commands", function () {
     });
   });
 
-  it("should LCS return the longest common subsequence of two strings", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "set1-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET1",
-        topic: "",
-        params: "[]",
-        wires: [["set1-helper"]],
-      },
-      { id: "set1-helper", type: "helper" },
-      {
-        id: "set2-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET2",
-        topic: "",
-        params: "[]",
-        wires: [["set2-helper"]],
-      },
-      { id: "set2-helper", type: "helper" },
-      {
-        id: "lcs-node",
-        type: "redis-command",
-        server: "config1",
-        command: "LCS",
-        name: "LCS",
-        topic: "",
-        params: "[]",
-        wires: [["lcs-helper"]],
-      },
-      { id: "lcs-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should LCS return the longest common subsequence of two strings",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "set1-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET1",
+          topic: "",
+          params: "[]",
+          wires: [["set1-helper"]],
+        },
+        { id: "set1-helper", type: "helper" },
+        {
+          id: "set2-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET2",
+          topic: "",
+          params: "[]",
+          wires: [["set2-helper"]],
+        },
+        { id: "set2-helper", type: "helper" },
+        {
+          id: "lcs-node",
+          type: "redis-command",
+          server: "config1",
+          command: "LCS",
+          name: "LCS",
+          topic: "",
+          params: "[]",
+          wires: [["lcs-helper"]],
+        },
+        { id: "lcs-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const set1Node = helper.getNode("set1-node");
-      const set1Helper = helper.getNode("set1-helper");
-      const set2Node = helper.getNode("set2-node");
-      const set2Helper = helper.getNode("set2-helper");
-      const lcsNode = helper.getNode("lcs-node");
-      const lcsHelper = helper.getNode("lcs-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const set1Node = helper.getNode("set1-node");
+        const set1Helper = helper.getNode("set1-helper");
+        const set2Node = helper.getNode("set2-node");
+        const set2Helper = helper.getNode("set2-helper");
+        const lcsNode = helper.getNode("lcs-node");
+        const lcsHelper = helper.getNode("lcs-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
-      });
+        delHelper.on("input", () => {
+          done();
+        });
 
-      lcsHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("mytext");
-          delNode.receive({
+        lcsHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("mytext");
+            delNode.receive({
+              payload: ["test:str:lcs1", "test:str:lcs2"],
+            });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        set2Helper.on("input", () => {
+          lcsNode.receive({
             payload: ["test:str:lcs1", "test:str:lcs2"],
           });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      set2Helper.on("input", () => {
-        lcsNode.receive({
-          payload: ["test:str:lcs1", "test:str:lcs2"],
         });
-      });
 
-      set1Helper.on("input", () => {
-        set2Node.receive({ topic: "test:str:lcs2", payload: "mynewtext" });
-      });
-
-      set1Node.receive({ topic: "test:str:lcs1", payload: "ohmytext" });
-    });
-  });
-
-  it("should SUBSTR (alias for GETRANGE) return a substring", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "set-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SET",
-        name: "SET",
-        topic: "",
-        params: "[]",
-        wires: [["set-helper"]],
-      },
-      { id: "set-helper", type: "helper" },
-      {
-        id: "substr-node",
-        type: "redis-command",
-        server: "config1",
-        command: "SUBSTR",
-        name: "SUBSTR",
-        topic: "",
-        params: "[]",
-        wires: [["substr-helper"]],
-      },
-      { id: "substr-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
-
-    helper.load(redisNode, flow, () => {
-      const setNode = helper.getNode("set-node");
-      const setHelper = helper.getNode("set-helper");
-      const substrNode = helper.getNode("substr-node");
-      const substrHelper = helper.getNode("substr-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
-
-      delHelper.on("input", () => {
-        done();
-      });
-
-      substrHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal("world");
-          delNode.receive({ topic: "test:str:substr" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      setHelper.on("input", () => {
-        substrNode.receive({
-          topic: "test:str:substr",
-          payload: ["6", "10"],
+        set1Helper.on("input", () => {
+          set2Node.receive({ topic: "test:str:lcs2", payload: "mynewtext" });
         });
-      });
 
-      setNode.receive({ topic: "test:str:substr", payload: "hello world" });
-    });
-  });
+        set1Node.receive({ topic: "test:str:lcs1", payload: "ohmytext" });
+      });
+    }
+  );
+
+  it(
+    "should SUBSTR (alias for GETRANGE) return a substring",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "set-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SET",
+          name: "SET",
+          topic: "",
+          params: "[]",
+          wires: [["set-helper"]],
+        },
+        { id: "set-helper", type: "helper" },
+        {
+          id: "substr-node",
+          type: "redis-command",
+          server: "config1",
+          command: "SUBSTR",
+          name: "SUBSTR",
+          topic: "",
+          params: "[]",
+          wires: [["substr-helper"]],
+        },
+        { id: "substr-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
+
+      helper.load(redisNode, flow, () => {
+        const setNode = helper.getNode("set-node");
+        const setHelper = helper.getNode("set-helper");
+        const substrNode = helper.getNode("substr-node");
+        const substrHelper = helper.getNode("substr-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
+
+        delHelper.on("input", () => {
+          done();
+        });
+
+        substrHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal("world");
+            delNode.receive({ topic: "test:str:substr" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        setHelper.on("input", () => {
+          substrNode.receive({
+            topic: "test:str:substr",
+            payload: ["6", "10"],
+          });
+        });
+
+        setNode.receive({ topic: "test:str:substr", payload: "hello world" });
+      });
+    }
+  );
 });

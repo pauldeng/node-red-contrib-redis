@@ -1,3 +1,4 @@
+const { afterEach, beforeEach, describe, it } = require("node:test");
 const helper = require("node-red-node-test-helper");
 const redisNode = require("../redis.js");
 const { cleanupKeys } = require("./helpers/cleanup");
@@ -5,16 +6,14 @@ const { redisConfigNode } = require("./helpers/deployment");
 
 helper.init(require.resolve("node-red"));
 
-describe("HyperLogLog commands", function () {
-  this.timeout(5000);
-
+describe("HyperLogLog commands", () => {
   const configNode = redisConfigNode("config1", "Local");
 
-  beforeEach((done) => {
+  beforeEach((t, done) => {
     helper.startServer(done);
   });
 
-  afterEach((done) => {
+  afterEach((t, done) => {
     helper.unload().then(() => {
       helper.stopServer(() => {
         cleanupKeys("test:hll:*", done);
@@ -22,83 +21,87 @@ describe("HyperLogLog commands", function () {
     });
   });
 
-  it("should PFADD elements and PFCOUNT approximate cardinality", function (done) {
-    const flow = [
-      configNode,
-      {
-        id: "pfadd-node",
-        type: "redis-command",
-        server: "config1",
-        command: "PFADD",
-        name: "PFADD",
-        topic: "",
-        params: "[]",
-        wires: [["pfadd-helper"]],
-      },
-      { id: "pfadd-helper", type: "helper" },
-      {
-        id: "pfcount-node",
-        type: "redis-command",
-        server: "config1",
-        command: "PFCOUNT",
-        name: "PFCOUNT",
-        topic: "",
-        params: "[]",
-        wires: [["pfcount-helper"]],
-      },
-      { id: "pfcount-helper", type: "helper" },
-      {
-        id: "del-node",
-        type: "redis-command",
-        server: "config1",
-        command: "DEL",
-        name: "DEL",
-        topic: "",
-        params: "[]",
-        wires: [["del-helper"]],
-      },
-      { id: "del-helper", type: "helper" },
-    ];
+  it(
+    "should PFADD elements and PFCOUNT approximate cardinality",
+    { timeout: 5000 },
+    function (t, done) {
+      const flow = [
+        configNode,
+        {
+          id: "pfadd-node",
+          type: "redis-command",
+          server: "config1",
+          command: "PFADD",
+          name: "PFADD",
+          topic: "",
+          params: "[]",
+          wires: [["pfadd-helper"]],
+        },
+        { id: "pfadd-helper", type: "helper" },
+        {
+          id: "pfcount-node",
+          type: "redis-command",
+          server: "config1",
+          command: "PFCOUNT",
+          name: "PFCOUNT",
+          topic: "",
+          params: "[]",
+          wires: [["pfcount-helper"]],
+        },
+        { id: "pfcount-helper", type: "helper" },
+        {
+          id: "del-node",
+          type: "redis-command",
+          server: "config1",
+          command: "DEL",
+          name: "DEL",
+          topic: "",
+          params: "[]",
+          wires: [["del-helper"]],
+        },
+        { id: "del-helper", type: "helper" },
+      ];
 
-    helper.load(redisNode, flow, () => {
-      const pfaddNode = helper.getNode("pfadd-node");
-      const pfaddHelper = helper.getNode("pfadd-helper");
-      const pfcountNode = helper.getNode("pfcount-node");
-      const pfcountHelper = helper.getNode("pfcount-helper");
-      const delNode = helper.getNode("del-node");
-      const delHelper = helper.getNode("del-helper");
+      helper.load(redisNode, flow, () => {
+        const pfaddNode = helper.getNode("pfadd-node");
+        const pfaddHelper = helper.getNode("pfadd-helper");
+        const pfcountNode = helper.getNode("pfcount-node");
+        const pfcountHelper = helper.getNode("pfcount-helper");
+        const delNode = helper.getNode("del-node");
+        const delHelper = helper.getNode("del-helper");
 
-      delHelper.on("input", () => {
-        done();
+        delHelper.on("input", () => {
+          done();
+        });
+
+        pfcountHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.be.a.Number();
+            msg.payload.should.be.aboveOrEqual(4);
+            delNode.receive({ topic: "test:hll:hll1" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        pfaddHelper.on("input", (msg) => {
+          try {
+            msg.payload.should.equal(1);
+            pfcountNode.receive({ payload: "test:hll:hll1" });
+          } catch (err) {
+            done(err);
+          }
+        });
+
+        pfaddNode.receive({
+          topic: "test:hll:hll1",
+          payload: ["a", "b", "c", "d", "e"],
+        });
       });
+    }
+  );
 
-      pfcountHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.be.a.Number();
-          msg.payload.should.be.aboveOrEqual(4);
-          delNode.receive({ topic: "test:hll:hll1" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      pfaddHelper.on("input", (msg) => {
-        try {
-          msg.payload.should.equal(1);
-          pfcountNode.receive({ payload: "test:hll:hll1" });
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      pfaddNode.receive({
-        topic: "test:hll:hll1",
-        payload: ["a", "b", "c", "d", "e"],
-      });
-    });
-  });
-
-  it("should PFMERGE two HyperLogLogs into a destination", function (done) {
+  it("should PFMERGE two HyperLogLogs into a destination", { timeout: 5000 }, function (t, done) {
     const flow = [
       configNode,
       {
