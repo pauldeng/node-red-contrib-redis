@@ -160,13 +160,17 @@ Per release:
 
 1. Bump `version` in `package.json` and move the `CHANGELOG.md` unreleased entries under it.
 2. Merge to `main`.
-3. Create a GitHub Release tagged `v<version>` (the tag must match `package.json`, or the
-   workflow fails before publishing).
+3. Create a GitHub Release tagged `v<version>` (for a Release event, the tag must match
+   `package.json`, or the workflow fails before publishing). The manual `workflow_dispatch`
+   escape hatch intentionally has no tag comparison and publishes the selected ref's package
+   version; use it only for an explicit maintainer-controlled recovery.
 
 `Release` then re-runs the full gate — Prettier, `npm audit --omit=dev`, `npm test`, the
-Playwright editor tests, `npm pack --dry-run` — and publishes with provenance. Confirm the
-result with `npm view @pauldeng/node-red-contrib-redis@<version> dist`: a CI publish has an
-`attestations` field, a workstation publish does not.
+Playwright editor tests, and a packed-contents check (`npm pack --dry-run --json`, rejecting
+any file outside the runtime/editor/examples/icons/README-assets/changelog/license/package-
+metadata allowlist) — and publishes with provenance. Confirm the result with
+`npm view @pauldeng/node-red-contrib-redis@<version> dist`: a CI publish has an `attestations`
+field, a workstation publish does not.
 
 ## Definition of Done
 

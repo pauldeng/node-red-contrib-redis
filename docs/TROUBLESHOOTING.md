@@ -31,10 +31,10 @@ Symptoms:
 - command-family specs fail while basic `SET` / `GET` still work
 - failures are clustered in one command family spec
 
-First confirm the deployment under test uses the expected image. All deployments in the
-primary matrix (standalone, Cluster, Sentinel) use Redis 8.10+ by default; the standalone
-stages also assert `INFO server` reports `8.10.x` before running, so a stale local image
-fails loudly instead of silently skipping the Redis 8.10 command-catalog suite.
+First confirm the deployment under test uses the expected image. The primary matrix pulls the
+current Redis or Valkey `latest` image once per test run, verifies the engine reported by
+`INFO server`, and logs its resolved version. Redis 8.10-specific tests are capability-gated;
+they run when the selected latest image provides the feature and skip cleanly otherwise.
 
 ## Stale Test Keys
 
